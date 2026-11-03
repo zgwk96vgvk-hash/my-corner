@@ -1,5 +1,7 @@
 // What each section shows. The same renderers fill a phone screen or a desktop window.
 import { pagedSpread } from './journal-pages.js';
+import { pictureHtml, hasPicture } from './pictures.js';
+import { notifyButton } from './push-client.js';
 import { ABOUT } from './floppy-lines.js';
 import { floppySvg } from './helper.js';
 import { statusBlock, nudgeButton, presenceDot } from './statusbar.js';
@@ -222,11 +224,11 @@ function profileTile(data, here = false) {
     { class: 'profile-tile' },
     decor.bunting,
     // Your picture opens your profile: the About page, with your photo grid after the bio.
-    here ? h('span', { class: 'avatar', html: ICON.person() }) : h('a', { class: 'avatar', href: '#/about', title: 'Profile', 'aria-label': `${data.site.owner || data.site.name}: profile`, html: ICON.person() }),
+    here ? h('span', { class: 'avatar' + (hasPicture(data.site.picture) ? ' has-pic' : ''), html: pictureHtml(data.site.picture) }) : h('a', { class: 'avatar' + (hasPicture(data.site.picture) ? ' has-pic' : ''), href: '#/about', title: 'Profile', 'aria-label': `${data.site.owner || data.site.name}: profile`, html: pictureHtml(data.site.picture) }),
     h(
       'div',
       { class: 'profile-text' },
-      h('div', { class: 'profile-name' }, h('strong', null, data.site.owner || data.site.name), nudgeButton(data.site)),
+      h('div', { class: 'profile-name' }, h('strong', null, data.site.owner || data.site.name), nudgeButton(data.site), notifyButton(data)),
       h('div', { class: 'profile-sub' }, latest ? h('span', { class: 'small' }, 'Last post · ' + niceDate(latest.date)) : null, decor.stickers),
       statusBlock(data)
     )

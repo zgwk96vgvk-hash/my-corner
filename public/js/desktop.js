@@ -240,6 +240,8 @@ export function startDesktop(root, data) {
     hideStart();
     hideContext();
     if (show) {
+      // (Drawn afresh each time: the latest posts, and whose menu it is.)
+      startMenu.replaceChildren(...startMenuParts(data, { onScreensaver: () => { hideStart(); screensaver.start(); } }));
       startMenu.hidden = false;
       startBtn.classList.add('pressed');
       startBtn.setAttribute('aria-expanded', 'true');
@@ -313,8 +315,22 @@ export function startDesktop(root, data) {
     { class: 'taskbar' },
     startBtn,
     tasks,
-    h('span', { class: 'tray' }, h('span', { class: 'tray-status', title: [PRESENCE[data.site.presence]?.[0], data.site.status].filter(Boolean).join(' · ') }, presenceDot(data.site), data.site.status ? withEmoticons(data.site.status, 14) : PRESENCE[data.site.presence]?.[0]), mute, clock)
+    h('span', { class: 'tray' }, h('span', { class: 'tray-status' }), mute, clock)
   );
+  // The words on the Explore button and your status in the tray: drawn again whenever the site
+  // changes (a new theme's words, a new status), so nothing keeps an old look until a reload.
+  const paintBar = () => {
+    const label = word('explore', 'Explore');
+    const words = [...startBtn.childNodes].find((n) => n.nodeType === 3);
+    if (words && words.textContent !== label) words.textContent = label;
+    const st = taskbar.querySelector('.tray-status');
+    const title = [PRESENCE[data.site.presence]?.[0], data.site.status].filter(Boolean).join(' · ');
+    if (st.dataset.was === title) return;
+    st.dataset.was = title;
+    st.title = title;
+    st.replaceChildren(presenceDot(data.site), ...[data.site.status ? withEmoticons(data.site.status, 14) : PRESENCE[data.site.presence]?.[0]].flat().filter(Boolean));
+  };
+  paintBar();
 
   // ---- balloon: the newest post ----
   const newest = data.posts[0];
@@ -354,6 +370,7 @@ export function startDesktop(root, data) {
     // (`all`: every window, wherever it's scrolled to, as when the owner changes something.)
     refresh(all = false) {
       drawIcons();
+      paintBar();
       for (const [id, w] of wins)
         if (all) {
           // (Kept where you were in it.)

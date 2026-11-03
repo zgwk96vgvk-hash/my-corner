@@ -14,10 +14,13 @@
 //   says when there's something new.
 import { h, ICON, registerCategories } from '/js/util.js';
 import { registerKeepsakes } from '/js/keepsake-maker.js';
+import { pictureHtml, hasPicture } from '/js/pictures.js';
 import { kit } from '/admin/admin.js';
 import { forgetOwner, ownerHooks } from '/js/owner-door.js';
 import { rebuildRoom } from '/js/cabinet.js';
 import { applySkin } from '/js/skins.js';
+import { sound } from '/js/sound.js';
+import { pushState, currentSub, signUp, signOff, deviceName, isIOS } from '/js/push-client.js';
 
 const TYPES = [
   ['thoughts', 'Thought', '💭'],
@@ -79,15 +82,19 @@ const postFor = (id) => owner?.posts.find((p) => !p.error && idOf(p) === id) || 
 // What visitors see, kept for "View as a visitor" (taken from the site's own fresh copies).
 const MINE = ['posts', 'planner', 'highlights', 'highlightsPast', 'guestbook', 'wishlist', 'site', 'theme'];
 // (And what visitors see of your friends, which may be nothing.)
-const FRIENDS = ['buddies', 'friendPosts', 'friendLooks', 'friendKeepsakes', 'friendCategories', 'friendsTab', 'friendsInHome'];
+const FRIENDS = ['buddies', 'friendPosts', 'friendLooks', 'friendKeepsakes', 'friendCategories', 'friendsTab', 'friendsInHome', 'ownerView'];
 function keepPublic(d) {
   publicCopy = Object.fromEntries([...MINE, ...FRIENDS].map((k) => [k, d[k]]));
 }
-function merge(d) {
+// `fromSite`: the site's own copy has just been fetched afresh, so its theme is the newest (it
+// may have been changed on another device since your copy was read); yours is then read again.
+function merge(d, fromSite = false) {
   if (!owner || previewing) return;
   // (A post whose header can't be read stays in the Control Panel, where it can be fixed.)
   d.posts = owner.posts.filter((p) => !p.error);
-  for (const k of MINE.slice(1)) if (owner[k] !== undefined) d[k] = owner[k];
+  for (const k of MINE.slice(1)) if (owner[k] !== undefined && !(fromSite && k === 'theme')) d[k] = owner[k];
+  // (Whose site it is, for the Explore menu: yours, with your name and picture.)
+  d.ownerView = true;
   // Your friends, all of them, whoever else sees them: the Friends tab, and (unless you've said
   // not to) their posts in your Home.
   const fm = owner.friendsMine;
@@ -114,6 +121,7 @@ function changed(d) {
   owner = d;
   merge(site.data);
   redraw();
+  showFaces();
   // (The highlights changed and you're in their room: built again, the closer look put back.)
   if (before !== JSON.stringify([d.highlights, d.highlightsPast]) && document.querySelector('.cab-room') && before !== '[null,null]') {
     document.querySelector('dialog.cab-dialog[open]')?.close();
@@ -197,7 +205,7 @@ const themesLive = {
     themeUnsaved = fn;
   }
 };
-function openHost(title, { nav = false, dock = false } = {}) {
+function openHost(title, { nav = false, dock = false, icon = '' } = {}) {
   const replacing = !!host && history.state?.okit;
   if (host && !closeHost(false, true)) return null;
   if (!leaveInline()) return null;
@@ -218,7 +226,7 @@ function openHost(title, { nav = false, dock = false } = {}) {
     tuck.textContent = tucked ? '▴' : '▾';
     tuck.setAttribute('aria-label', tucked ? 'Bring the panel back' : 'Tuck the panel away');
   });
-  const bar = h('div', { class: 'xp-title okit-bar' }, back, h('span', { class: 'okit-ico', 'aria-hidden': 'true', html: nav || dock ? GEAR : PLUS }), titleEl, tuck, close);
+  const bar = h('div', { class: 'xp-title okit-bar' }, back, h('span', { class: 'okit-ico', 'aria-hidden': 'true', html: icon || (nav || dock ? GEAR : PLUS) }), titleEl, tuck, close);
   const kind = dock ? 'okit-dock' : site.desktop ? 'okit-win' : 'okit-sheet';
   const el = h('section', { class: `okit okit-host xp-window ${kind}`, role: 'dialog', 'aria-modal': dock ? 'false' : 'true', 'aria-label': title }, bar, sections, tabs, body);
   close.addEventListener('click', () => closeHost());
@@ -374,9 +382,9 @@ async function editPost(p, el) {
 // each category opens in the same place, with ‹ back to the categories.
 const CP = [
   ['Writing', [['posts', 'Posts & drafts', 'Every post, drafts and scheduled ones included: find, pin, edit', '🗂'], ['highlights', 'Highlights', 'The cabinet’s shelves, in order, with why', '★'], ['planner', 'Planner', 'Your lists, private ones too', '📒']]],
-  ['People', [['notifications', 'Inbox', 'Comments, signatures, suggestions, nudges, friends’ news', '✉'], ['friends', 'Friends', 'Your buddies, and who sees what', '👥'], ['status', 'Status', 'How you are, your message, a countdown', '💬']]],
+  ['People', [['notifications', 'Inbox', 'Comments, signatures, suggestions, nudges, friends’ news', '✉'], ['friends', 'Friends', 'Your buddies, and who sees what', '👥'], ['mail', 'Mail', 'Notes from friends, and ones you’ve sent', '📨'], ['notify', 'Notifications', 'On your phone or computer, even with the site closed', '🔔'], ['status', 'Status', 'How you are, your message, a countdown', '💬']]],
   ['Look', [['themes', 'Themes', 'Colours, wallpaper, fonts and the rest, on your real site as you choose', '🎨'], ['designs', 'Designs', 'The visa in your passport, and keepsakes of your own', '🎟']]],
-  ['Your site', [['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
+  ['Your site', [['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
 ];
 const CP_NAME = Object.fromEntries(CP.flatMap(([, items]) => items.map(([id, name]) => [id, name])));
 CP_NAME.comments = 'Comments';
@@ -391,6 +399,7 @@ function setPage(id) {
 }
 function cpHome() {
   if (!host) return;
+  host.mail = false;
   host.titleEl.textContent = 'Control Panel';
   host.back.hidden = true;
   const n = badgeCount();
@@ -414,18 +423,62 @@ function cpHome() {
         )
       ),
       // The safety net: the plain editor, if something on the site ever stops working.
+      versionLine(),
       h('p', { class: 'cp-plain' }, 'Something on your site not working? ', h('a', { href: '/admin/plain', target: '_blank', rel: 'noopener' }, 'Open the plain editor'), ' (everything here, in plain pages).')
     )
   );
 }
+// At the foot of the Control Panel: whether your site has the latest version. (A copy made with
+// the Deploy button brings each new version in by itself overnight.)
+const niceVersion = (v) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : String(v || '');
+};
+function versionLine() {
+  const line = h('div', { class: 'cp-version', role: 'status' }, h('span', null, 'Checking for a newer version…'));
+  const show = async (again) => {
+    let v;
+    try {
+      v = await kit.version(again);
+    } catch {
+      return line.replaceChildren(h('span', null, 'Couldn’t check for a newer version just now.'));
+    }
+    const repo = `https://github.com/${v.template}`;
+    const ago = v.at ? ` (checked ${new Date(v.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : '';
+    const again2 = btn('Check again', 'link', (e) => busyOn(e.currentTarget, () => show(true)));
+    if (!v.latest) return line.replaceChildren(h('span', null, `Version of ${niceVersion(v.mine)}. Couldn’t reach GitHub to check for a newer one just now. `), again2);
+    if (v.latest <= v.mine) return line.replaceChildren(h('span', { class: 'cp-ok' }, `✓ Up to date: the version of ${niceVersion(v.mine)}${ago}. `), again2);
+    line.classList.add('behind');
+    line.replaceChildren(
+      h('b', null, `A newer version is ready (${niceVersion(v.latest)}; yours is ${niceVersion(v.mine)}).`),
+      h('span', null, ' A copy made with the Deploy button brings it in by itself overnight. To have it now: your site’s repository on GitHub › Actions › Update my site › Run workflow. Still not arriving? '),
+      h('a', { href: `${repo}#getting-updates`, target: '_blank', rel: 'noopener' }, 'Getting updates'),
+      h('span', null, ' has the one-time setup for sites made before updates existed. '),
+      again2
+    );
+  };
+  show(false);
+  return line;
+}
 function openPage(id) {
   if (id === 'themes') return openThemes();
+  if (id === 'mail') {
+    setPage(id);
+    return drawMail(host.body);
+  }
+  if (id === 'notify') {
+    setPage(id);
+    if (host) host.mail = false;
+    return drawNotify(host.body);
+  }
+  if (host) host.mail = false;
   setPage(id);
   kit.show(id);
 }
 function controlPanel(page = '') {
   closeMenus();
   if (page === 'themes') return openThemes();
+  if (page === 'mail') return openMail();
   if (!openHost('Control Panel', { nav: true })) return;
   if (page) openPage(page);
   else cpHome();
@@ -475,8 +528,10 @@ function meMenu(anchor) {
     [
       { label: 'New post…', icon: '＋', run: () => typeMenu(anchor) },
       { label: n ? `Inbox (${n} waiting)` : 'Inbox', icon: '✉', run: () => controlPanel(n && owner.pendingComments?.length ? 'comments' : n && owner.pendingGuestbook?.length ? 'guestbook' : 'notifications') },
+      { label: mailBox.unread ? `Mail (${mailBox.unread} new)` : 'Mail', icon: '📨', run: () => openMail() },
       { label: 'Posts, drafts and highlights', icon: '🗂', run: () => controlPanel('posts') },
       { label: 'Themes', icon: '🎨', run: () => openThemes() },
+      { label: 'Your picture', icon: '🖼', run: () => controlPanel('picture') },
       { label: 'Control Panel', icon: '⚙', run: () => controlPanel() },
       '-',
       { label: previewing ? 'Back to owner view' : 'View as a visitor', icon: '👁', run: togglePreview },
@@ -533,9 +588,46 @@ function plusButton(cls) {
 }
 function meButton(cls) {
   const name = owner.site?.owner || 'You';
-  const b = h('button', { type: 'button', class: `okit-me ${cls}`, 'aria-label': `${name}: your menu`, title: name, 'aria-haspopup': 'menu' }, h('span', { class: 'okit-face', 'aria-hidden': 'true', html: ICON.person('#1d3f8a') }), h('span', { class: 'okit-name' }, name), h('span', { class: 'okit-badge', hidden: true }));
+  const b = h('button', { type: 'button', class: `okit-me ${cls}`, 'aria-label': `${name}: your menu`, title: name, 'aria-haspopup': 'menu' }, h('span', { class: 'okit-face', 'aria-hidden': 'true' }), h('span', { class: 'okit-name' }, name), h('span', { class: 'okit-badge', hidden: true }));
+  showFaces(b);
   b.addEventListener('click', () => meMenu(b));
   return b;
+}
+// Your picture and name on your tile (in the taskbar, the dock or floating), kept up to date.
+let faceShown = '';
+function showFaces(only) {
+  const pic = owner?.site?.picture || '';
+  const name = owner?.site?.owner || 'You';
+  if (!only && faceShown === pic + '|' + name) return;
+  if (!only) faceShown = pic + '|' + name;
+  for (const b of only ? [only] : document.querySelectorAll('.okit-me')) {
+    const face = b.querySelector('.okit-face');
+    face.classList.toggle('has-pic', hasPicture(pic));
+    face.innerHTML = pictureHtml(pic, '#1d3f8a');
+    b.querySelector('.okit-name').textContent = name;
+    b.setAttribute('aria-label', `${name}: your menu`);
+    b.title = name;
+  }
+}
+// In the Explore menu, signed in, your picture changes it (as XP's did).
+function decorateStartHead() {
+  for (const av of document.querySelectorAll('.sm-head.mine .avatar:not([data-okit])')) {
+    av.dataset.okit = '1';
+    Object.assign(av, { role: 'button', tabIndex: 0, title: 'Change your picture' });
+    av.setAttribute('aria-label', 'Change your picture');
+    av.classList.add('okit-pic-btn');
+    const go = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // (The menu closes first: on a phone by its backdrop, on a computer by its button.)
+      const scrim = document.querySelector('.start-scrim:not([hidden])');
+      if (scrim) scrim.click();
+      else document.querySelector('.start-btn.pressed')?.click();
+      controlPanel('picture');
+    };
+    av.addEventListener('click', go);
+    av.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && go(e));
+  }
 }
 function badgeCount() {
   return (owner.pendingGuestbook?.length || 0) + (owner.pendingComments?.length || 0) + (owner.suggestions?.length || 0);
@@ -546,22 +638,22 @@ function decorateBars() {
     bar.dataset.okit = '1';
     bar.querySelector('.start-btn')?.after(plusButton('in-taskbar'));
     const tray = bar.querySelector('.tray');
-    if (tray) tray.prepend(meButton('in-tray'));
+    if (tray) tray.prepend(meButton('in-tray'), mailButton('in-tray'));
   }
   // The Mac dock on a phone.
   for (const dock of document.querySelectorAll('.dock:not([data-okit])')) {
     dock.dataset.okit = '1';
-    dock.append(plusButton('in-dock'), meButton('in-dock'));
+    dock.append(plusButton('in-dock'), mailButton('in-dock'), meButton('in-dock'));
   }
   // Screens with neither (the journal, the shelves…): the same two, floating at the bottom.
   const hasBar = [...document.querySelectorAll('.taskbar, .dock')].some((b) => b.offsetParent);
   let float = document.querySelector('.okit-float');
-  if (!hasBar && !float) document.body.append(h('div', { class: 'okit-float' }, plusButton('floating'), meButton('floating')));
+  if (!hasBar && !float) document.body.append(h('div', { class: 'okit-float' }, plusButton('floating'), mailButton('floating'), meButton('floating')));
   else if (hasBar && float) float.remove();
   // (Room left at the foot of the page, so the floating pair never covers anything.)
   document.documentElement.classList.toggle('okit-floating', !hasBar);
   const n = badgeCount();
-  for (const b of document.querySelectorAll('.okit-badge')) {
+  for (const b of document.querySelectorAll('.okit-me .okit-badge')) {
     b.hidden = !n;
     b.textContent = n ? String(n) : '';
   }
@@ -950,7 +1042,9 @@ function decorateFriendPosts() {
       panel.hidden = false;
       toggle.setAttribute('aria-expanded', 'true');
     }
-    el.append(h('div', { class: 'okit-talk-wrap' }, toggle, panel));
+    // (And a note, just to them.)
+    const note = btn('✉ Note', 'okit-talk-note', () => sendTo(key), { 'aria-label': `Send ${f?.owner || f?.name || 'them'} a note`, title: `Send ${f?.owner || f?.name || 'them'} a note` });
+    el.append(h('div', { class: 'okit-talk-wrap' }, h('div', { class: 'okit-row' }, toggle, note), panel));
   }
 }
 // On the Friends tab: who else sees it, and where to change that.
@@ -1005,6 +1099,341 @@ function friendsDot() {
 }
 window.addEventListener('hashchange', () => owner && friendsDot());
 
+// ---------- mail: notes between friends ----------
+// A friend's site can send yours a short note. When one comes in, the newest pops up (a balloon
+// over the tray on a computer, a banner along the top on a phone); every note, read or not,
+// waits in Mail, with the ones you've sent. Only you ever see them, signed in.
+const mailBox = { notes: [], unread: 0, friends: [], loaded: false };
+const POPPED = 'okit-mail-popped';
+const MAIL_EVERY = 90 * 1000;
+let mailAt = 0;
+let mailView = { folder: 'in', open: '', compose: null };
+const initialOf = (s) => (String(s || '?').trim()[0] || '?').toUpperCase();
+const MAIL_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2" fill="#fff" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+const whenOf = (t) => {
+  const d = new Date(t);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+};
+async function loadMail(force = false) {
+  if (!force && Date.now() - mailAt < 20 * 1000) return;
+  mailAt = Date.now();
+  try {
+    Object.assign(mailBox, await kit.mail.list(), { loaded: true });
+  } catch {
+    return;
+  }
+  showMailCount();
+  popNewest();
+  // (Mail that's open shows what came in.)
+  if (host?.mail) drawMail(host.body, true);
+}
+function startMail() {
+  loadMail(true);
+  setInterval(() => !document.hidden && loadMail(), MAIL_EVERY);
+  document.addEventListener('visibilitychange', () => !document.hidden && loadMail());
+}
+function mailButton(cls) {
+  const b = h('button', { type: 'button', class: `okit-mailbtn ${cls}`, 'aria-label': 'Mail', title: 'Mail', html: MAIL_ICON });
+  b.append(h('span', { class: 'okit-badge', hidden: true }));
+  b.addEventListener('click', () => openMail());
+  setTimeout(showMailCount, 0);
+  return b;
+}
+function showMailCount() {
+  const n = mailBox.unread;
+  for (const b of document.querySelectorAll('.okit-mailbtn')) {
+    const badge = b.querySelector('.okit-badge');
+    badge.hidden = !n;
+    badge.textContent = n ? (n > 9 ? '9+' : String(n)) : '';
+    b.classList.toggle('has-new', !!n);
+    b.setAttribute('aria-label', n ? `Mail: ${n} new` : 'Mail');
+  }
+}
+// The newest unread note, once: it pops up. (Any others are in Mail.)
+let popEl = null;
+let popTimer;
+function popNewest() {
+  const newest = mailBox.notes.find((n) => !n.out && !n.read);
+  if (!newest || previewing || host?.mail) return;
+  let popped = '';
+  try {
+    popped = localStorage.getItem(POPPED) || '';
+  } catch {}
+  if (newest.id <= popped) return;
+  try {
+    localStorage.setItem(POPPED, newest.id);
+  } catch {}
+  popEl?.remove();
+  const others = mailBox.unread - 1;
+  const close = () => {
+    clearTimeout(popTimer);
+    popEl?.classList.remove('on');
+    const el = popEl;
+    setTimeout(() => el?.remove(), 300);
+    popEl = null;
+  };
+  popEl = h(
+    'aside',
+    { class: 'okit okit-mailpop' + (site.desktop ? ' balloon' : ' banner'), role: 'status', 'aria-live': 'polite', 'aria-label': 'New mail' },
+    h('div', { class: 'mp-head' }, h('span', { class: 'mp-env', 'aria-hidden': 'true', html: MAIL_ICON }), h('b', null, 'You have new mail'), h('button', { type: 'button', class: 'mp-x', 'aria-label': 'Close', onclick: close }, '×')),
+    h('div', { class: 'mp-body' }, h('span', { class: 'ml-av', 'aria-hidden': 'true' }, initialOf(newest.name)), h('div', null, h('b', null, newest.name), h('p', null, newest.text))),
+    h(
+      'div',
+      { class: 'okit-row mp-acts' },
+      others > 0 ? h('small', null, `and ${others} more in Mail`) : null,
+      btn('Reply', '', () => {
+        close();
+        openMail({ open: newest.id, compose: { to: newest.friend, reply: newest.id } });
+      }),
+      btn('Read it', 'go', () => {
+        close();
+        openMail({ open: newest.id });
+      })
+    )
+  );
+  document.body.append(popEl);
+  requestAnimationFrame(() => popEl?.classList.add('on'));
+  sound.chime?.();
+  popTimer = setTimeout(close, 20000);
+}
+function openMail(view = {}) {
+  closeMenus();
+  if (popEl) popEl.querySelector('.mp-x')?.click();
+  mailView = { folder: 'in', open: '', compose: null, ...view };
+  if (!openHost('Mail', { icon: MAIL_ICON.replace('fill="#fff"', 'fill="none"').replace('currentColor', '#fff').replace('currentColor', '#fff') })) return;
+  host.mail = true;
+  host.el.classList.add('okit-mailwin');
+  drawMail(host.body);
+  loadMail(true);
+}
+function sendTo(key, reply = '') {
+  openMail({ folder: 'in', compose: { to: key, reply } });
+}
+// Mail: the folders (in, sent), the list, and a note (or a new one) beside it, or on its own on
+// a narrow screen.
+function drawMail(body, quietly = false) {
+  if (!host) return;
+  host.mail = true;
+  host.el.classList.add('okit-mailwin');
+  const v = mailView;
+  const list = mailBox.notes.filter((n) => (v.folder === 'out' ? n.out : !n.out));
+  const note = mailBox.notes.find((n) => n.id === v.open) || null;
+  // (Reading a note marks it read.)
+  if (note && !note.out && !note.read) {
+    note.read = true;
+    mailBox.unread = Math.max(0, mailBox.unread - 1);
+    showMailCount();
+    kit.mail.read([note.id]).catch(() => {});
+  }
+  const pick = (patch) => {
+    Object.assign(mailView, patch);
+    drawMail(body);
+  };
+  const folder = (id, label, n) => h('button', { type: 'button', class: 'ml-folder', 'aria-pressed': String(v.folder === id), onclick: () => pick({ folder: id, open: '', compose: null }) }, label, n ? h('span', { class: 'okit-badge' }, String(n)) : null);
+  const toolbar = h(
+    'div',
+    { class: 'ml-bar' },
+    btn('✎ New note', 'go', () => pick({ compose: { to: mailBox.friends[0]?.key || '', reply: '' }, open: '' }), { disabled: !mailBox.friends.length || null }),
+    h('div', { class: 'ml-folders', role: 'group', 'aria-label': 'Folders' }, folder('in', 'Inbox', mailBox.unread), folder('out', 'Sent', 0))
+  );
+  const rows = list.length
+    ? h(
+        'ul',
+        { class: 'ml-list', role: 'list' },
+        list.map((n) =>
+          h(
+            'li',
+            null,
+            h(
+              'button',
+              { type: 'button', class: 'ml-row' + (n.out || n.read ? '' : ' unread') + (n.id === v.open ? ' on' : ''), 'aria-current': n.id === v.open ? 'true' : null, onclick: () => pick({ open: n.id, compose: null }) },
+              h('span', { class: 'ml-av', 'aria-hidden': 'true' }, initialOf(n.name)),
+              h('span', { class: 'ml-words' }, h('span', { class: 'ml-top' }, h('b', null, (n.out ? 'To ' : '') + n.name), h('small', null, whenOf(n.at))), h('span', { class: 'ml-snip' }, n.text))
+            )
+          )
+        )
+      )
+    : h('p', { class: 'ml-empty' }, v.folder === 'out' ? 'Nothing sent yet.' : mailBox.friends.length ? 'No mail yet. Notes from your friends arrive here.' : 'No mail yet. Once you have friends (Control Panel › Friends), you can send each other notes.');
+  let pane;
+  if (v.compose) {
+    const to = h('select', { class: 'okit-input ml-to', 'aria-label': 'To' }, mailBox.friends.map((f) => h('option', { value: f.key, selected: f.key === v.compose.to }, f.name)));
+    const ta = h('textarea', { class: 'okit-input ml-text', rows: 6, maxlength: 600, placeholder: 'Write a note…', 'aria-label': 'Your note' });
+    ta.value = v.compose.text || '';
+    const count = h('small', { class: 'ml-count' }, `${ta.value.length}/600`);
+    ta.addEventListener('input', () => {
+      v.compose.text = ta.value;
+      count.textContent = `${ta.value.length}/600`;
+    });
+    const replyTo = v.compose.reply ? mailBox.notes.find((n) => n.id === v.compose.reply) : null;
+    pane = h(
+      'div',
+      { class: 'ml-pane ml-compose' },
+      h('div', { class: 'ml-back-row' }, btn('‹ Back', 'link ml-back', () => pick({ compose: null }))),
+      h('label', { class: 'ml-field' }, h('span', null, 'To'), to),
+      replyTo ? h('blockquote', { class: 'ml-quote' }, h('small', null, `${replyTo.name} wrote:`), replyTo.text) : null,
+      ta,
+      h('div', { class: 'okit-row ml-send' }, count, btn('Send', 'go', (e) => {
+        const text = ta.value.trim();
+        if (!text) return ta.focus();
+        busyOn(e.currentTarget, async () => {
+          try {
+            await kit.mail.send(to.value, text, v.compose.reply || '');
+            const who = mailBox.friends.find((f) => f.key === to.value)?.name || 'them';
+            toast(`Sent to ${who}.`);
+            mailView = { folder: 'out', open: '', compose: null };
+            await loadMail(true);
+            drawMail(body);
+          } catch (err) {
+            toast(err.message, true);
+          }
+        });
+      })),
+      h('p', { class: 'ml-hint' }, 'It goes straight to their site, where only they can read it.')
+    );
+    setTimeout(() => (v.compose.to ? ta : to).focus({ preventScroll: true }), 0);
+  } else if (note) {
+    pane = h(
+      'article',
+      { class: 'ml-pane ml-read' },
+      h('div', { class: 'ml-back-row' }, btn(v.folder === 'out' ? '‹ Sent' : '‹ Inbox', 'link ml-back', () => pick({ open: '' }))),
+      h('header', { class: 'ml-from' }, h('span', { class: 'ml-av big', 'aria-hidden': 'true' }, initialOf(note.name)), h('div', null, h('b', null, (note.out ? 'To ' : 'From ') + note.name), h('small', null, new Date(note.at).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })), /^https?:\/\//.test(note.site) ? h('a', { href: note.site, target: '_blank', rel: 'noopener noreferrer' }, note.site.replace(/^https?:\/\//, '')) : null)),
+      h('p', { class: 'ml-body' }, note.text),
+      h(
+        'div',
+        { class: 'okit-row ml-acts' },
+        note.still ? btn(note.out ? 'Write again' : 'Reply', 'go', () => pick({ compose: { to: note.friend, reply: note.out ? '' : note.id } })) : h('small', null, 'No longer a friend.'),
+        !note.out ? btn('Mark unread', '', () => {
+          note.read = false;
+          mailBox.unread++;
+          showMailCount();
+          kit.mail.read([note.id], false).catch(() => {});
+          pick({ open: '' });
+        }) : null,
+        btn('Delete', 'danger', (e) =>
+          confirm('Delete this note?') &&
+          busyOn(e.currentTarget, async () => {
+            try {
+              await kit.mail.remove(note.id);
+              mailBox.notes = mailBox.notes.filter((n) => n.id !== note.id);
+              toast('Deleted.');
+              pick({ open: '' });
+            } catch (err) {
+              toast(err.message, true);
+            }
+          })
+        )
+      )
+    );
+  } else pane = h('div', { class: 'ml-pane ml-none' }, h('span', { class: 'ml-big-env', 'aria-hidden': 'true', html: MAIL_ICON }), h('p', null, list.length ? 'Pick a note to read it.' : ''));
+  const wrap = h('div', { class: 'ml' + (v.compose || note ? ' reading' : '') }, toolbar, h('div', { class: 'ml-split' }, h('div', { class: 'ml-side' }, rows), pane));
+  // (Side by side when there's room; one at a time when there isn't.)
+  const fit = () => wrap.classList.toggle('narrow', wrap.clientWidth < 560);
+  if (quietly && v.compose) return; // (Never redrawn under your hands while you write.)
+  body.replaceChildren(wrap);
+  fit();
+  new ResizeObserver(fit).observe(wrap);
+}
+// On the Friends tab: a note to each buddy.
+function decorateBuddies() {
+  for (const li of document.querySelectorAll('.ff-buddies li:not([data-okit])')) {
+    li.dataset.okit = '1';
+    const name = li.querySelector('.ff-buddy b')?.textContent || 'them';
+    const b = (owner.friendsMine?.buddies || []).find((x) => x.owner === name || x.name === name);
+    if (!b?.key) continue;
+    li.classList.add('okit-buddy');
+    li.append(btn('✉', 'okit-note-btn', () => sendTo(b.key), { 'aria-label': `Send ${name} a note`, title: `Send ${name} a note` }));
+  }
+}
+
+// ---------- notifications ----------
+// Control Panel › Notifications: this device on or off, what you're told about, a test, your
+// other devices, and whether visitors may ask to hear when you post. (See src/push.js.)
+async function drawNotify(body) {
+  body.replaceChildren(h('p', { class: 'okit-note' }, 'Loading…'));
+  let st;
+  try {
+    st = await kit.push.status();
+  } catch (e) {
+    body.replaceChildren(h('p', { class: 'okit-note' }, e.message));
+    return;
+  }
+  const state = pushState();
+  const mine = await currentSub();
+  const here = mine && st.devices.some((d) => d.endpoint === mine.endpoint);
+  const again = () => drawNotify(body);
+  const act = (fn, msg) => async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      await fn();
+      if (msg) toast(msg);
+      await again();
+    } catch (err) {
+      toast(err.message, true);
+      b.disabled = false;
+    }
+  };
+  const thisDevice = h(
+    'section',
+    { class: 'nt-box' },
+    h('h3', null, 'This device'),
+    state === 'homescreen'
+      ? h('p', null, `On ${isIOS() ? 'an iPhone or iPad' : 'this device'}, notifications only work from the Home Screen: tap Share, then “Add to Home Screen”, open the site from there, sign in, and come back here.`)
+      : state === 'unsupported'
+        ? h('p', null, 'This browser can’t show notifications. Try another browser, or your phone.')
+        : state === 'blocked'
+          ? h('p', null, 'Notifications are blocked for this site in this browser’s settings. Allow them there, then come back.')
+          : here
+            ? h('div', null, h('p', { class: 'nt-on' }, `🔔 On, as “${deviceName()}”.`), h('div', { class: 'okit-row' }, btn('Send a test', 'go', act(() => kit.push.test(), 'Sent: it should arrive in a moment.')), btn('Turn off here', '', act(async () => kit.push.unsubscribe(await signOff()), 'Off on this device.'))))
+            : h('div', null, h('p', null, 'Get told about the things you choose below on this device, even when the site isn’t open.'), btn('🔔 Turn on notifications here', 'go', act(async () => kit.push.subscribe(await signUp(st.publicKey), deviceName()), 'On: you’ll be told here.')))
+  );
+  const kinds = [
+    ['comments', 'Comments waiting for you', 'And guestbook signatures, suggestions, and comments from friends'],
+    ['notes', 'Notes from friends', 'When a friend sends you a note (Mail)'],
+    ['friends', 'Friends’ new posts', 'When a friend posts something new']
+  ];
+  const choose = (k) => (e) => kit.push.settings({ kinds: { [k]: e.target.checked } }).then(() => toast('Saved.'), (err) => toast(err.message, true));
+  const what = h('section', { class: 'nt-box' }, h('h3', null, 'Tell me about'), kinds.map(([k, label, sub]) => h('label', { class: 'nt-check' }, h('input', { type: 'checkbox', checked: st.kinds[k], onchange: choose(k) }), h('span', null, h('b', null, label), h('small', null, sub)))));
+  const devices = h(
+    'section',
+    { class: 'nt-box' },
+    h('h3', null, 'Your devices'),
+    st.devices.length
+      ? h(
+          'ul',
+          { class: 'nt-devices' },
+          st.devices.map((d) => h('li', null, h('span', null, h('b', null, d.name || 'A device'), h('small', null, ` since ${new Date(d.since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}${mine?.endpoint === d.endpoint ? ' · this one' : ''}`)), btn('Remove', 'danger', act(() => kit.push.unsubscribe(d.endpoint), 'Removed.'))))
+        )
+      : h('p', { class: 'nt-none' }, 'None yet.')
+  );
+  const visitors = h(
+    'section',
+    { class: 'nt-box' },
+    h('h3', null, 'Visitors'),
+    h(
+      'label',
+      { class: 'nt-check' },
+      h('input', { type: 'checkbox', checked: st.visitors, onchange: (e) => kit.push.settings({ visitors: e.target.checked }).then(() => toast(e.target.checked ? 'Visitors can ask to hear when you post.' : 'Off: visitors aren’t told about new posts.'), (err) => toast(err.message, true)) }),
+      h('span', null, h('b', null, 'Let visitors ask to hear when I post'), h('small', null, 'A 🔔 Notify me button appears by your name. Only visitors who tap it, and allow it, are told; only about your new posts, never anything else. Nothing about them is kept but the address their browser gives for it.'))
+    ),
+    h('p', { class: 'nt-count' }, st.visitorCount ? `${st.visitorCount} ${st.visitorCount === 1 ? 'visitor gets' : 'visitors get'} notified when you post.` : 'Nobody has asked yet.')
+  );
+  body.replaceChildren(h('div', { class: 'nt' }, thisDevice, what, devices, visitors));
+}
+// Opened from a notification: straight to what it's about.
+function openFromNotice() {
+  const url = new URL(location.href);
+  const open = url.searchParams.get('open');
+  if (!open) return;
+  url.searchParams.delete('open');
+  history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+  if (open === 'mail') openMail();
+}
+navigator.serviceWorker?.addEventListener('message', (e) => {
+  if (e.data?.type === 'open' && typeof e.data.url === 'string' && e.data.url.startsWith('/')) location.href = e.data.url;
+});
+
 let decorating = false;
 function decorate() {
   writing();
@@ -1021,11 +1450,19 @@ function decorate() {
     decorateWishlist();
     decorateHighlights();
     decorateFriendPosts();
+    decorateStartHead();
     decorateFriendsTab();
+    decorateBuddies();
     friendsDot();
   } finally {
     decorating = false;
   }
+}
+
+let refreshing = null;
+function refreshSoon() {
+  if (refreshing || writing() || host) return;
+  refreshing = kit.refresh().catch(() => {}).finally(() => setTimeout(() => (refreshing = null), 15000));
 }
 
 export async function startOwner(s) {
@@ -1044,7 +1481,10 @@ export async function startOwner(s) {
   ownerHooks.trying = () => trying;
   ownerHooks.fresh = (d) => {
     keepPublic(d);
-    merge(d);
+    merge(d, true);
+    // (Something changed on the site, perhaps from another device: your own copy is read again
+    // too, so drafts, the inbox and the theme here are never left behind.)
+    refreshSoon();
   };
   // Whatever the site draws next gets your tools.
   let queued = false;
@@ -1057,4 +1497,6 @@ export async function startOwner(s) {
     });
   }).observe(document.body, { childList: true, subtree: true });
   decorate();
+  startMail();
+  openFromNotice();
 }

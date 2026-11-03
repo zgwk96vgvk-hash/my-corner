@@ -1,6 +1,6 @@
 // Owner mode: signed in, the site itself has your tools on it. (Locally the lock is open, as
 // DEV_ADMIN does for the back office; on the internet Cloudflare Access decides.)
-import { test, report, assert, eq, launch, close, putFile, getFile, publicData, overview, BASE, chromium } from './lib.mjs';
+import { test, report, assert, eq, launch, close, putFile, getFile, publicData, overview, BASE, chromium, PHOTOS } from './lib.mjs';
 
 await launch();
 const at = (d) => new Date(Date.now() - d * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
@@ -98,7 +98,7 @@ for (const [name, opts] of [['a computer', DESK], ['a phone', PHONE]]) {
       await p.locator('.okit-me').first().click();
       await p.locator('.okit-menu button', { hasText: 'Control Panel' }).click();
       await p.waitForSelector('.okit-host .cp-item');
-      eq(await p.locator('.okit-host .cp-item').count(), 11, 'its categories');
+      eq(await p.locator('.okit-host .cp-item').count(), 14, 'its categories');
       await p.locator('.okit-close').click();
       await p.waitForFunction(() => !document.querySelector('.okit-host'));
     });
@@ -233,10 +233,64 @@ await test('the Control Panel: categories, each in the same place, and back', as
       assert((await p.locator('.okit-host .xp-title-text').innerText()).includes('Friends'), 'its name in the bar');
       await p.locator('.okit-host .okit-back').click();
       await p.waitForSelector('.okit-host .cp-item');
+      // At its foot: which version this is (here, offline, it can't ask GitHub for the newest).
+      await p.waitForFunction(() => /Version of|Up to date|newer version/.test(document.querySelector('.cp-version')?.textContent || ''));
       await p.keyboard.press('Escape');
       await p.waitForFunction(() => !document.querySelector('.okit-host'));
     });
   }
+  const v = await (await fetch(`${BASE}/admin/api/version`)).json();
+  const { VERSION } = await import('../src/version.js');
+  eq(v.mine, VERSION, 'this copy’s version');
+  assert(/^\d{4}-\d{2}-\d{2}[a-z]?$/.test(VERSION), 'a date, and a letter for a second change that day');
+});
+
+await test('signed in, the Explore menu is yours; your picture: one of the site’s own, or a photo', async () => {
+  await putFile('site.md', '---\nname: Home Corner\nowner: Sam\n---\nHi.\n');
+  // A visitor's Explore menu is a visitor's.
+  await site(PHONE, async (p) => {
+    await p.locator('.start-btn').first().click();
+    eq(await p.locator('.sm-head strong').innerText(), 'Visitor', 'a visitor’s');
+  }, '/#/');
+  for (const opts of [DESK, PHONE]) {
+    await site(opts, async (p) => {
+      await p.waitForSelector('.okit-me');
+      await p.locator('.start-btn').first().click();
+      eq(await p.locator('.sm-head strong').innerText(), 'Sam', 'signed in: yours');
+      // Your picture there opens the chooser (as XP's did).
+      await p.locator('.sm-head.mine .avatar').click();
+      await p.waitForSelector('.okit-host .pic-pick');
+      assert((await p.locator('.okit-host .xp-title-text').innerText()).includes('Your picture'), 'in the Control Panel');
+      if (opts === PHONE) return;
+      await p.locator('.pic-pick[aria-label="Cat"]').click();
+      await p.waitForFunction(() => document.querySelector('.pic-pick[aria-label="Cat"]')?.getAttribute('aria-checked') === 'true');
+      await p.waitForSelector('.okit-me .okit-face.has-pic svg');
+      // A photo: cropped square, and its hidden data left behind.
+      await p.locator('.pic-chooser input[type="file"]').setInputFiles(PHOTOS[0]);
+      await p.waitForFunction(() => document.querySelector('.pic-now img')?.complete);
+    });
+  }
+  const pic = (await publicData()).site.picture;
+  assert(/^design\/me-[a-z0-9]+\.jpg$/.test(pic), 'a photo of yours: ' + pic);
+  assert(/^picture: design\/me-/m.test(await getFile('site.md')), 'kept in site.md');
+  const img = await fetch(`${BASE}/media/${pic}`);
+  eq(img.status, 200, 'shown to visitors');
+  // On the welcome screen, by your name.
+  await site(PHONE, async (p) => {
+    await p.waitForSelector('.owner-tile .tile-avatar.has-pic img');
+    eq(await p.locator('.owner-tile .tile-avatar img').evaluate((i) => i.naturalWidth === i.naturalHeight), true, 'square');
+  }, '/#/welcome');
+  // Back to a picture of the site's: the photo isn't kept.
+  await site(DESK, async (p) => {
+    await p.waitForSelector('.okit-me');
+    await p.locator('.okit-me').first().click();
+    await p.locator('.okit-menu button', { hasText: 'Your picture' }).click();
+    await p.locator('.pic-pick[aria-label="Rubber duck"]').click();
+    await p.waitForFunction(() => document.querySelector('.pic-pick[aria-label="Rubber duck"]')?.getAttribute('aria-checked') === 'true');
+  });
+  eq((await publicData()).site.picture, 'duck', 'the duck');
+  eq((await fetch(`${BASE}/media/${pic}`)).status, 404, 'the old photo gone');
+  assert(!(await overview()).files.some((f) => f.key === pic), 'not in your files');
 });
 
 await test('no separate back office: /admin is your site, signed in; the plain editor is kept as a safety net', async () => {
@@ -260,6 +314,58 @@ await test('no separate back office: /admin is your site, signed in; the plain e
     await p.waitForURL((u) => u.search.includes('owner=1'));
     await p.waitForSelector('.okit-me');
   }, '/admin/plain');
+});
+
+await test('a theme changed elsewhere reaches pages already open, words and all (signed in or not)', async () => {
+  await putFile('theme.md', '---\ntheme: classic\n---\n');
+  const browser = await chromium.launch();
+  try {
+    const pages = [];
+    for (const path of ['/#/', '/?owner=1#/']) {
+      const p = await browser.newPage(DESK);
+      p.errors = [];
+      p.on('pageerror', (e) => p.errors.push(e.message));
+      await p.clock.install();
+      await p.addInitScript(() => sessionStorage.setItem('entered', '1'));
+      await p.goto(BASE + path);
+      await p.waitForSelector('.start-btn');
+      if (path.includes('owner')) await p.waitForSelector('.okit-me');
+      pages.push(p);
+    }
+    // Changed on another device: a new theme, with its own word on the Explore button.
+    await putFile('theme.md', '---\ntheme: matcha\nlabels:\n  explore: Begin\n---\n');
+    for (const p of pages) {
+      await p.clock.fastForward('02:00');
+      await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await p.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--sk-main').trim() === '#7d9f68', null, { timeout: 15000 });
+      await p.waitForFunction(() => document.querySelector('.start-btn')?.textContent.trim() === 'Begin', null, { timeout: 15000 });
+      assert(!p.errors.length, p.errors.join('; '));
+    }
+  } finally {
+    await browser.close();
+  }
+  await putFile('theme.md', '---\ntheme: classic\n---\n');
+});
+
+await test('in dark mode, what you type in your windows can always be read', async () => {
+  const browser = await chromium.launch();
+  try {
+    const p = await browser.newPage(PHONE);
+    await p.addInitScript(() => {
+      sessionStorage.setItem('entered', '1');
+      localStorage.setItem('theme', 'dark');
+    });
+    await p.goto(BASE + '/?owner=1#/');
+    await p.waitForSelector('.okit-me');
+    await p.locator('.okit-me').first().click();
+    await p.locator('.okit-menu button', { hasText: 'Control Panel' }).click();
+    await p.locator('.cp-item[data-cp="site"]').click();
+    await p.waitForSelector('.okit-host input.input');
+    const [fg, bg] = await p.locator('.okit-host input.input').first().evaluate((i) => [getComputedStyle(i).color, getComputedStyle(i).backgroundColor]);
+    assert(fg !== bg && /^rgb\((\d{1,2}|1[0-4]\d), /.test(fg), `dark ink on the light box: ${fg} on ${bg}`);
+  } finally {
+    await browser.close();
+  }
 });
 
 await test('Themes: the real site wears what you try; closing without saving puts it back; saving keeps it', async () => {

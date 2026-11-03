@@ -43,8 +43,9 @@ If Cloudflare asks you to turn on **R2** (where your posts and photos are kept),
 - **Changing things where they are:** tap **✎** by your status to change it and how you are (online, busy…). In the Planner you tick things off right on the page, take them off with ×, and add to a list underneath; an empty planner offers to start one. In the trips wishlist you add a place, tick it when you've been, or take it off. In the highlights cabinet's closer look you can write its line on why, move it earlier or later on the shelf, or take it out.
 - **The Control Panel:** **⚙ Control Panel** in your menu, like XP's: pick a category under Writing (posts and drafts, highlights, planner), People (inbox, friends, status), Look (themes, designs) or Your site (site and wishlist, travel stats, export and files). It's a window on a computer and a list of rows on a phone, like a Settings app. Each category opens in the same place, with **‹** to go back. Back or ✕ closes it.
 - **Themes, on your real site:** **Themes** opens beside your site (at the bottom on a phone, where it can be tucked down to look), and the site itself wears each choice as you make it. Closing without saving puts the saved look back, after asking; your choices are kept for next time.
-- **Your friends:** their posts are mixed into your Home by when they were posted, each as it looks on their site with who it's from on top (friends-only ones marked). Only you see them there. **💬 Comment** under one opens its comments, and yours goes straight on at their site, under your name, linking to yours; you can answer other people's comments too. A dot on **Friends** (in the menus, on the desktop and in the dock) counts new posts until you open it. See [Friends](#friends).
-- **Your menu:** **View as a visitor** shows the site exactly as everyone else sees it, and **Sign out** signs you out.
+- **Your friends:** their posts are mixed into your Home by when they were posted, each as it looks on their site with who it's from on top (friends-only ones marked). Only you see them there. **💬 Comment** under one opens its comments, and yours goes straight on at their site, under your name, linking to yours; you can answer other people's comments too. A dot on **Friends** (in the menus, on the desktop and in the dock) counts new posts until you open it. The envelope by your tile is **Mail**: notes from friends (the newest pops up when it arrives). See [Friends](#friends).
+- **Notifications:** **Control Panel › Notifications** turns them on for the device you're on: comments waiting, notes from friends and friends' new posts reach your phone or computer even when the site isn't open. Visitors can be let ask to hear when you post. See [Notifications](#notifications).
+- **Your menu:** **View as a visitor** shows the site exactly as everyone else sees it, and **Sign out** signs you out. Signed in, the Explore menu is yours too: your name and picture at the top (tap the picture to change it).
 
 There's no separate back office: everything is done on the site itself, signed in. Visitors never see any of it, and never even download it: the owner's tools live behind a lock at `/admin` on your site. Until you set it up, it's shut for everyone, including you; once it's set up, only you get past the sign-in, and `/admin` takes you to your site, signed in.
 
@@ -74,6 +75,7 @@ These settings live only in your Cloudflare account, never in the code. Your sit
 
 Signed in, open **⚙ Control Panel** from your menu (your tile in the taskbar or the dock):
 
+- **Your picture:** a photo of you (cropped square, with its hidden data left behind), or one of the pictures drawn for the site in the spirit of the early 2000s: a rubber duck, a guitar, a goldfish, a rocket and more. It shows by your name on the welcome screen, at the top of your profile, on your tile in the taskbar and in your Explore menu.
 - **Site & wishlist:** set your site's name and your own name. The site name appears on the welcome screen, every title bar, the browser tab and the home-screen app.
 - **Themes:** pick one of thirty-four looks for the whole site, or make your own colours, wallpaper, stickers and mouse pointer.
 - **Designs:** the visa in your passport and the keepsakes are examples you can swap (see [Designs you can swap](#designs-you-can-swap)).
@@ -109,6 +111,8 @@ Leave the workers.dev address switched on. It costs nothing, and it's what keeps
 ### Getting updates
 
 Your site keeps itself up to date with the template it was made from. Every night, a small job called **Update my site** brings in the latest version, keeping your own settings (your site's name, your storage and your address). Cloudflare then puts it live, as it does for any change. Your posts, photos and theme live in your Cloudflare storage, so an update never touches them. To update straight away, open your site's repository on GitHub, go to **Actions › Update my site** and press **Run workflow**.
+
+**Is mine up to date?** Signed in, the foot of the **Control Panel** says so: ✓ up to date, or that a newer version is ready (with its date and yours). If a newer one is ready for more than a day, your copy probably doesn't have the update job yet: see below.
 
 **Made your site before updates were added?** Your copy doesn't have the job yet. Add it once, and it looks after itself from then on:
 
@@ -335,7 +339,9 @@ Signed in, you then see their posts in your own Home, mixed in with yours by whe
 
 **Comments between friends.** Signed in, **💬 Comment** under a friend's post (in your Home or on Friends) shows its comments, and you can add one or answer someone's. Yours is sent to their site, signed, and goes straight on (you're friends), under your name with a 👥 friend badge linking to your site; their visitors' comments still wait for them to approve, and theirs on your site go straight on too. You can comment on their friends-only posts as well. If comments are switched off on their site, or it hasn't been updated yet, it says so.
 
-There are no private messages. Only published posts are shared: drafts and posts scheduled for later stay private. Every friendship gets its own secret, known only to those two sites, and every request between them is signed with it, so nobody else can read your friend feed or pretend to be your friend. Friends' photos come through your own site, so visitors' browsers never connect to theirs. Secrets and the copies of friends' posts are kept apart from your files and are never in the export. **Remove buddy** unfollows both ways.
+**Notes between friends (mail).** Send a friend a short note, like the old days: **✉** by their name on the Friends tab, **✉ Note** under one of their posts, or **✎ New note** in **Mail** (the envelope by your tile in the taskbar or dock, your menu, or **Control Panel › Mail**). It goes straight to their site, signed like everything else between your two sites, and only they can read it, signed in: it's never on either site, never shown to visitors and never passed on. When one arrives, the newest pops up on its own (a yellow balloon over the tray on a computer, a banner along the top on a phone or tablet) with **Read it** and **Reply**, and the envelope shows how many are new; every note, read or not, waits in **Mail**, with the ones you've sent. Mail sits side by side (the list, and the note you're reading) on a wide screen, and one at a time with **‹ Back** on a narrow one. Notes are up to 600 characters; a friend can send twenty an hour, and your site keeps the newest few hundred. Your site checks for new mail every minute and a half while it's open.
+
+Only published posts are shared: drafts and posts scheduled for later stay private. Every friendship gets its own secret, known only to those two sites, and every request between them is signed with it, so nobody else can read your friend feed or pretend to be your friend. Friends' photos come through your own site, so visitors' browsers never connect to theirs. Secrets and the copies of friends' posts are kept apart from your files and are never in the export. **Remove buddy** unfollows both ways (notes you've already had stay in Mail).
 
 **Who sees your friends** is up to you, under **Who sees your friends' posts on your site?** (Control Panel › Friends; the Friends tab also says who can see it, with **Change**):
 
@@ -348,6 +354,24 @@ Your friends get a say too. Untick **Let friends show my posts on their sites** 
 **Your site's address.** Friends know your site by one address: the one you were using the first time you opened Friends (it's under **My site's address**, and it's the address inside your friend code). Signing in at another address doesn't change it. It's also your site's main address: visitors who arrive at your workers.dev address, or at the www version of your domain, are sent there.
 
 When your site moves to a domain of your own, follow [Your own domain](#your-own-domain-optional). Its last step, **Move my site to …** under Friends, tells each friend's site. Each one checks that your site really is at the new address, then switches over. Your old address keeps working for them as well, so nothing breaks. If a friend's site can't be reached just then, Friends says so, and **Tell them again** tries later. Friend codes you'd sent out before still work.
+
+## Notifications
+
+Your site can tell your phone or computer about things even when it isn't open, like any app: a buzz and a message on the lock screen, which opens the right page when you tap it.
+
+**For you.** Signed in, open **Control Panel › Notifications** and tap **Turn on notifications here** (do it on each device you want them on). Then choose what you're told about:
+
+- **Comments waiting for you**, and guestbook signatures, suggestions, and comments from friends;
+- **Notes from friends** (Mail);
+- **Friends' new posts**.
+
+**Send a test** checks it works; **Your devices** lists every device that gets them, and **Remove** stops one. Only a device signed in through Cloudflare Access can sign up for these.
+
+**For visitors, only if you want.** Tick **Let visitors ask to hear when I post** and a **🔔 Notify me** button appears by your name. Only visitors who tap it, and allow it, get anything, and only about your new posts (not drafts, not friends-only posts, and each post once, when it goes on the site, including a scheduled one going live). Nothing about them is kept but the address their browser gives for it, and tapping **Notifying** again stops it. Untick the box and the button goes; nobody is told about new posts.
+
+**On an iPhone or iPad,** notifications only work from the Home Screen: in Safari tap **Share › Add to Home Screen**, open the site from there, then turn them on (or tap **Notify me**). On Android and on computers they work in the browser.
+
+How it works: your site has its own key pair, made the first time it's needed and kept in your storage (out of your files and the export). Each message is encrypted for the one device it's going to and signed with your site's key, then handed to that device's push service (Apple's, Google's or Mozilla's), which can't read it. A device that's gone (the app removed, notifications switched off) is forgotten the next time a message can't reach it.
 
 ## Travel stats (optional)
 
@@ -415,7 +439,7 @@ Under **Themes** (in your menu, or the Control Panel) you can dress the whole si
 | Taskbar & scrolling | The taskbar at the top or bottom on computers, whether it shows the clock and your status, and scroll bars usual, in the theme's colours, thin or hidden |
 | Icons & sounds | Icons in full colour, soft, or black and white; sounds classic, soft, chiptune, bubbly, or off until a visitor turns them on |
 | Charms & pointer | The charm on the title bars and the one on the mouse pointer |
-| Effects | Your name in rainbow, glitter, glow, WordArt, outline or chrome letters; a pointer trail (sparkles, hearts, stars, bubbles, rainbow or pixel dust); and something gently falling over the page (snow, petals, hearts, stars, leaves, confetti, or bubbles rising) |
+| Effects | Your name in rainbow, glitter, glow, WordArt, outline or chrome letters; a pointer trail (sparkles, hearts, stars, bubbles, rainbow or pixel dust); and something gently falling over the page (snow, petals, hearts, stars, leaves, confetti, or bubbles rising). **With the season or festive day** (the usual choice) lets the season or a festive day bring its own gentle fall; **Nothing at all** means nothing ever falls, whatever the date |
 | Floppy | Floppy, the site's little helper, can dress for the seasons and festive days (a bobble hat and scarf in winter, a flower crown in spring, a sun hat and sunglasses in summer, a beret and umbrella in autumn, a festive hat at Christmas, a witch's hat at Halloween, and something for every festive day, holding the day's drawing), or wear an outfit you put together: a hat, glasses, something round his neck, something to hold (any drawing or emoji), the outfit's colour and his own. A picture shows him as he'll look |
 | Words | Your own words on the buttons: rename any section (everywhere it shows: the menus, the desktop icons and the Explore menu) and the site's buttons (Explore, Others, Search, Leave, Nudge, Open in journal, Read the review, and the welcome screen's Visitor and Tap to come in). Leave a box empty to keep the usual words |
 | Seasons & festive days | Gentle touches for the time of year, in every theme (see below). Pick a season or a festive day yourself, or choose **Automatic** and your site follows the date |
@@ -528,7 +552,7 @@ npm run seed:local                  # example posts into the local bucket
 npm run dev                         # http://localhost:8787
 ```
 
-`npm run deploy` publishes from your machine. After editing `content/`, run `npm run examples` to refresh the example pack.
+`npm run deploy` publishes from your machine. Each change to the template moves `src/version.js` on (the date, then a letter for another change that day), which is how copies know a newer version is out. After editing `content/`, run `npm run examples` to refresh the example pack.
 
 **Checks:** `npm test` runs the end-to-end checks in `tests/` against a fresh local copy of the site for each group: every kind of post saved, edited and re-saved without losing anything, photos (sideways, HEIC, twenty at once), the export zip, Goodreads imports, long journal entries split into pages, every page on a phone, a tablet and a desktop filled with awkward content, then with none, and two local sites becoming friends (port 8801 for the second). They need Playwright once: `npm i --no-save playwright && npx playwright install chromium`. `npm test -- admin journal` runs just those groups.
 
