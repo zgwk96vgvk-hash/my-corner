@@ -715,6 +715,7 @@ export const OPTIONS = {
   bars: { name: 'Title bars', choices: { glossy: 'Glossy', flat: 'Flat', stripes: 'Striped', pixel: 'Pixel steps' } },
   corners: { name: 'Corners', choices: { classic: 'Classic', square: 'Square', round: 'Round' } },
   realism: { name: 'Realism', choices: { normal: 'As it is', extra: 'Extra real: textures, depth, nothing flat' } },
+  counter: { name: 'Visitor counter', choices: { led: 'LED digits', odometer: 'Odometer', flip: 'Flip clock', nixie: 'Glowing tubes', plain: 'Plain numbers' } },
   density: { name: 'Spacing', choices: { cosy: 'Cosy', compact: 'Compact', roomy: 'Roomy' } },
   posts: { name: 'Posts in the feed', choices: { cards: 'Cards', lines: 'A list with lines' } },
   scrollbar: { name: 'Scroll bars', choices: { classic: 'Usual', themed: 'In the theme’s colours', thin: 'Thin', hidden: 'Hidden' } },
@@ -1002,7 +1003,7 @@ export function lookOf(id, t) {
 }
 const dayNumber = (date) => Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
 // Parts that can be left out: of the profile header, and of the taskbar's tray.
-export const HIDEABLE = { lastpost: 'Last post date', status: 'Status', playing: 'Now playing', countdown: 'Countdown', nudge: 'Nudge button', clock: 'Clock (taskbar)', traystatus: 'Status (taskbar, computers)' };
+export const HIDEABLE = { lastpost: 'Last post date', status: 'Status', playing: 'Now playing', countdown: 'Countdown', nudge: 'Nudge button', clock: 'Clock (taskbar)', traystatus: 'Status (taskbar, computers)', fortune: 'Fortune cookie', photoday: 'Photo of the day' };
 // The sections, for the main menu's order and for hiding ones you don't use.
 export const SECTIONS = { home: 'Home', thoughts: 'Thoughts', journal: 'Places', atlas: 'Map', friends: 'Friends', album: 'Photos', more: 'Dumps & lists', passport: 'Passport', wishlist: 'Trips wishlist', planner: 'Planner', guestbook: 'Guestbook', books: 'Books', films: 'Films', podcasts: 'Podcasts', music: 'Music', tv: 'TV', stats: 'Travel stats', about: 'About' };
 export const DEFAULT_MENU = ['home', 'thoughts', 'journal', 'atlas', 'friends'];
@@ -1659,10 +1660,12 @@ export function applySkin(settings, doc = document) {
   // The other settings: rules in skins.css follow these marks on the page.
   for (const k of Object.keys(OPTIONS)) root.dataset['sk' + k.replace(/(^|_)(\w)/g, (m, u, ch) => ch.toUpperCase())] = t[k];
   root.dataset.skHide = t.hide.join(' ');
-  // Extra real: the grain that paper, card and keepsakes are given (see real.css).
+  // Extra real: the grain that paper, card and keepsakes are given on a computer (see real.css).
+  // (A ready-made tile of grain, laid over them: working the grain out afresh for every card,
+  // every time it was drawn, made scrolling slow.)
   if (t.realism === 'extra' && !doc.getElementById('real-defs')) {
     const holder = doc.createElement('div');
-    holder.innerHTML = '<svg id="real-defs" width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0"><filter id="real-grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" seed="7" result="n"/><feColorMatrix in="n" type="matrix" values=".3 0 0 0 .81  .3 0 0 0 .8  .3 0 0 0 .77  0 0 0 0 1" result="g"/><feComposite in="g" in2="SourceAlpha" operator="in" result="gin"/><feBlend in="SourceGraphic" in2="gin" mode="multiply"/></filter></svg>';
+    holder.innerHTML = '<svg id="real-defs" width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0"><filter id="real-grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feImage href="/img/grain.png" x="0" y="0" width="128" height="128" result="t"/><feTile in="t" result="n"/><feComposite in="n" in2="SourceAlpha" operator="in" result="gin"/><feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="gin"/></feMerge></filter></svg>';
     doc.body.append(holder.firstChild);
   }
   let style = doc.getElementById('skin-css');

@@ -21,6 +21,9 @@ import { rebuildRoom } from '/js/cabinet.js';
 import { applySkin } from '/js/skins.js';
 import { sound } from '/js/sound.js';
 import { pushState, currentSub, signUp, signOff, deviceName, isIOS } from '/js/push-client.js';
+import { mountMap } from '/js/maps.js';
+import { refreshSite } from '/js/refresh.js';
+import { MIDDLES } from '/admin/countries.js';
 
 const TYPES = [
   ['thoughts', 'Thought', '💭'],
@@ -384,7 +387,7 @@ const CP = [
   ['Writing', [['posts', 'Posts & drafts', 'Every post, drafts and scheduled ones included: find, pin, edit', '🗂'], ['highlights', 'Highlights', 'The cabinet’s shelves, in order, with why', '★'], ['planner', 'Planner', 'Your lists, private ones too', '📒']]],
   ['People', [['notifications', 'Inbox', 'Comments, signatures, suggestions, nudges, friends’ news', '✉'], ['friends', 'Friends', 'Your buddies, and who sees what', '👥'], ['mail', 'Mail', 'Notes from friends, and ones you’ve sent', '📨'], ['notify', 'Notifications', 'On your phone or computer, even with the site closed', '🔔'], ['status', 'Status', 'How you are, your message, a countdown', '💬']]],
   ['Look', [['themes', 'Themes', 'Colours, wallpaper, fonts and the rest, on your real site as you choose', '🎨'], ['designs', 'Designs', 'The visa in your passport, and keepsakes of your own', '🎟']]],
-  ['Your site', [['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
+  ['Your site', [['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['visitors', 'Visitors', 'How many, and which countries they come from', '🌍'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
 ];
 const CP_NAME = Object.fromEntries(CP.flatMap(([, items]) => items.map(([id, name]) => [id, name])));
 CP_NAME.comments = 'Comments';
@@ -471,9 +474,43 @@ function openPage(id) {
     if (host) host.mail = false;
     return drawNotify(host.body);
   }
+  if (id === 'visitors') {
+    setPage(id);
+    if (host) host.mail = false;
+    return drawVisitors(host.body);
+  }
   if (host) host.mail = false;
   setPage(id);
   kit.show(id);
+}
+// Visitors: how many have come, and from which countries (only a count for each: Cloudflare's own
+// reckoning of where a connection comes from, never anything about anyone).
+function drawVisitors(body) {
+  const by = Object.entries(owner?.visitorCountries || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  let names = null;
+  try {
+    names = new Intl.DisplayNames(['en'], { type: 'region' });
+  } catch {}
+  const name = (cc) => names?.of(cc) || cc;
+  const total = by.reduce((n, [, x]) => n + x, 0);
+  const map = h('div', { class: 'okit-visit-map' });
+  body.replaceChildren(
+    h(
+      'div',
+      { class: 'nt okit-visitors' },
+      h('p', { class: 'okit-lead' }, `${(owner?.counter || 0).toLocaleString('en-GB')} visits so far${by.length ? `, from ${by.length} ${by.length === 1 ? 'country' : 'countries'}` : ''}.`),
+      by.length ? map : h('p', { class: 'okit-note' }, 'Countries show here as visits come in.'),
+      by.length
+        ? h(
+            'ol',
+            { class: 'okit-visit-list' },
+            by.slice(0, 40).map(([cc, n]) => h('li', null, h('span', null, name(cc)), h('span', { class: 'okit-visit-bar', style: { '--w': `${Math.max(4, Math.round((n / by[0][1]) * 100))}%` } }), h('b', null, n.toLocaleString('en-GB'))))
+          )
+        : null,
+      h('p', { class: 'okit-note' }, `Only a count for each country is kept: Cloudflare’s own reckoning of where a visit’s connection comes from, never anything about anyone. Each visit counts once, and your own visits never count.${total < (owner?.counter || 0) ? ' (Visits from before this was added aren’t on the map.)' : ''}`)
+    )
+  );
+  if (by.length) mountMap(map, { places: by.filter(([cc]) => MIDDLES[cc]).map(([cc, n]) => ({ lat: MIDDLES[cc][0], lon: MIDDLES[cc][1], title: name(cc), count: n, unit: n === 1 ? 'visit' : 'visits' })), heat: true, style: 'mac', zoom: 2 });
 }
 function controlPanel(page = '') {
   closeMenus();
@@ -535,6 +572,7 @@ function meMenu(anchor) {
       { label: 'Control Panel', icon: '⚙', run: () => controlPanel() },
       '-',
       { label: previewing ? 'Back to owner view' : 'View as a visitor', icon: '👁', run: togglePreview },
+      { label: 'Refresh (everything fresh)', icon: '↻', run: () => refreshSite() },
       { label: 'Sign out', icon: '⎋', run: signOut }
     ],
     'You'
@@ -548,6 +586,7 @@ function postMenu(anchor, p) {
     [
       { label: 'Edit', icon: '✎', run: () => editPost(p, anchor.closest('[data-post]')) },
       { label: p.pinned ? 'Unpin' : 'Pin to the top', icon: '📌', run: () => kit.togglePin(kit.post(p.key) || p) },
+      p.friends_only ? null : { label: p.start_here ? 'Not “Start here” any more' : 'Start here (new visitors see it first)', icon: '👋', run: () => kit.toggleFlag(kit.post(p.key) || p, 'start_here', p.start_here ? 'Back in its usual place.' : 'New visitors see it first now, until they close it.') },
       shelf ? { label: rank ? `Out of my highlights (№${rank})` : 'Add to my highlights', icon: '★', run: () => (rank ? kit.takeOutHighlight(kit.post(p.key) || p) : kit.addHighlight(kit.post(p.key) || p)) } : null,
       { label: p.friends_only ? 'For everyone' : 'Friends only', icon: '👥', run: () => kit.toggleFlag(kit.post(p.key) || p, 'friends_only', p.friends_only ? 'On the site for everyone.' : 'Friends only now: off the site.') },
       p.photos?.length ? { label: p.profile ? 'Off my profile grid' : 'On my profile grid', icon: '▦', run: () => kit.toggleFlag(kit.post(p.key) || p, 'profile', p.profile ? 'Off the grid.' : 'On your profile grid.') } : null,
@@ -676,12 +715,23 @@ function decoratePosts() {
       postMenu(more, p);
     });
     const head = el.querySelector(':scope > .card-head');
-    (head || el).append(more);
-    if (!head) el.classList.add('okit-has-more');
+    // (No header strip, as on a journal page or a review: the ⋯ sits beside the title, which
+    // wraps around it, so a long title is never hidden under it. Failing that, in the corner.)
+    const title = head ? null : el.querySelector(':scope > :is(h1, h2, h3)');
     const st = stateOf(p);
-    if (st) {
-      el.classList.add('okit-hidden-post');
-      (head || el).prepend(h('span', { class: `okit-state ${st[0]}` }, st[1]));
+    const badge = st ? h('span', { class: `okit-state ${st[0]}` }, st[1]) : null;
+    if (st) el.classList.add('okit-hidden-post');
+    if (head) {
+      head.append(more);
+      if (badge) head.prepend(badge);
+    } else if (title) {
+      more.classList.add('by-title');
+      badge?.classList.add('by-title');
+      title.before(...[more, badge].filter(Boolean));
+    } else {
+      el.classList.add('okit-has-more');
+      el.append(more);
+      if (badge) el.prepend(badge);
     }
   }
 }
@@ -768,7 +818,7 @@ function decorateGuestbook() {
       { class: 'okit-waitlist', 'aria-label': 'Signatures waiting for you' },
       h('h4', null, `Waiting for you · ${waiting.length}`),
       waiting.map((g) =>
-        waitingCard('Signature', g.name, niceWhen(g.date), g.message, [
+        waitingCard(g.card ? '📮 Postcard' : 'Signature', g.name, niceWhen(g.date), g.message, [
           btn('Delete', 'danger', (e) => busyOn(e.currentTarget, () => kit.act(() => kit.files.delFile(g.key), 'Deleted.'))),
           btn('Approve', 'go', (e) => busyOn(e.currentTarget, () => kit.act(() => kit.files.move(g.key, g.key.replace('guestbook-pending/', 'guestbook/')), 'Approved: it’s on the site now.')))
         ])
@@ -776,13 +826,14 @@ function decorateGuestbook() {
     );
     list.querySelector('.droid-section')?.after(box);
   }
-  for (const el of list.querySelectorAll('.gb-entry[data-gb]')) {
+  // (Signatures, and postcards: each can be answered or taken off.)
+  for (const el of list.querySelectorAll('.gb-entry[data-gb], .gb-postcard[data-gb]')) {
     const [date, name] = el.dataset.gb.split('|');
     const g = (owner.approvedGuestbook || []).find((x) => String(x.date) === date && x.name === name);
     if (!g) continue;
     const box = h('div', { class: 'okit-cm-box' });
-    el.querySelector('.gb-text')?.append(
-      h('div', { class: 'okit-row okit-cm-tools' }, btn(g.reply ? 'Edit your reply' : 'Reply', '', () => box.replaceChildren(box.firstChild ? '' : replyBox(g.reply, 'Your reply', (text) => kit.act(() => kit.files.putFile(g.key, kit.gbText(g, text)), text ? 'Reply saved.' : 'Reply removed.')))), btn('Remove', 'danger', (e) => confirm(`Remove ${g.name}’s signature?`) && busyOn(e.currentTarget, () => kit.act(() => kit.files.delFile(g.key), 'Removed.')))),
+    el.querySelector('.gb-text, .gbp-back')?.append(
+      h('div', { class: 'okit-row okit-cm-tools' }, btn(g.reply ? 'Edit your reply' : 'Reply', '', () => box.replaceChildren(box.firstChild ? '' : replyBox(g.reply, 'Your reply', (text) => kit.act(() => kit.files.putFile(g.key, kit.gbText(g, text)), text ? 'Reply saved.' : 'Reply removed.')))), btn('Remove', 'danger', (e) => confirm(`Remove ${g.name}’s ${g.card ? 'postcard' : 'signature'}?`) && busyOn(e.currentTarget, () => kit.act(() => kit.files.delFile(g.key), 'Removed.')))),
       box
     );
   }
@@ -853,6 +904,7 @@ function savePlanner(change, msg) {
     return kit.act(() => kit.files.putFile('planner.md', kit.plannerText(lists)), msg);
   });
 }
+const plannerTyping = {};
 function decoratePlanner() {
   for (const li of document.querySelectorAll('.pln-item[data-pl]:not([data-okit])')) {
     li.dataset.okit = '1';
@@ -880,9 +932,21 @@ function decoratePlanner() {
     const at = Number(page.dataset.plList);
     const text = h('input', { class: 'okit-input', maxlength: 200, placeholder: 'Add to this list…', 'aria-label': 'Add to this list' });
     const due = h('input', { class: 'okit-input okit-date', type: 'date', 'aria-label': 'By when (optional)' });
+    // (What you're typing survives the list being drawn again, after a tick saved a moment ago.)
+    const typed = plannerTyping[at];
+    if (typed) {
+      text.value = typed.text;
+      due.value = typed.due;
+      if (typed.focus) setTimeout(() => text.focus(), 0);
+    }
+    const remember = () => (plannerTyping[at] = { text: text.value, due: due.value, focus: document.activeElement === text });
+    text.addEventListener('input', remember);
+    due.addEventListener('change', remember);
+    text.addEventListener('blur', () => plannerTyping[at] && (plannerTyping[at].focus = false));
     const add = btn('Add', 'go', (e) => {
       const t = text.value.trim();
       if (!t) return text.focus();
+      delete plannerTyping[at];
       busyOn(e.currentTarget, () => savePlanner((ls) => ls[at].items.push({ text: t, done: false, due: due.value, note: '' }), 'Added.'));
     });
     text.addEventListener('keydown', (e) => e.key === 'Enter' && add.click());
@@ -1479,6 +1543,18 @@ export async function startOwner(s) {
   document.documentElement.classList.add('owner-on');
   ownerHooks.holding = () => writing();
   ownerHooks.trying = () => trying;
+  // (An emoji left on one of your posts that you don't want: × takes it off.)
+  ownerHooks.removeReaction = async (p, emoji) => {
+    if (!confirm(`Take ${emoji} off “${p.title || 'this post'}”?`)) return false;
+    try {
+      await kit.removeReaction(p, emoji);
+      toast(`${emoji} taken off.`);
+      return true;
+    } catch (e) {
+      toast(e.message, true);
+      return false;
+    }
+  };
   ownerHooks.fresh = (d) => {
     keepPublic(d);
     merge(d, true);

@@ -35,6 +35,7 @@ package-lock.json
 package.json
 public/admin/admin.css
 public/admin/admin.js
+public/admin/countries.js
 public/admin/examples.json
 public/admin/filters.js
 public/admin/friends.js
@@ -51,6 +52,7 @@ public/css/cards.css
 public/css/comments.css
 public/css/dark.css
 public/css/desktop.css
+public/css/extras.css
 public/css/fonts.css
 public/css/keepsake-maker.css
 public/css/leather.css
@@ -153,6 +155,7 @@ public/img/cabinet/gold-leaf.webp
 public/img/cabinet/grain-h.webp
 public/img/cabinet/grain-v.webp
 public/img/cabinet/silk.webp
+public/img/grain.png
 public/index.html
 public/js/album.js
 public/js/app.js
@@ -166,6 +169,7 @@ public/js/comments.js
 public/js/desktop.js
 public/js/effects.js
 public/js/emoticons.js
+public/js/extras.js
 public/js/floppy-lines.js
 public/js/floppy-look.js
 public/js/friend-html.js
@@ -182,6 +186,8 @@ public/js/pictures.js
 public/js/pipes.js
 public/js/planner.js
 public/js/push-client.js
+public/js/reactions.js
+public/js/refresh.js
 public/js/screensaver.js
 public/js/search.js
 public/js/shelves.js
@@ -226,6 +232,7 @@ tests/admin.test.mjs
 tests/atlas.test.mjs
 tests/comments.test.mjs
 tests/designs.test.mjs
+tests/extras.test.mjs
 tests/fixtures/goodreads.csv
 tests/fixtures/iphone.heic
 tests/fixtures/p1.jpg
@@ -241,6 +248,7 @@ tests/interact.test.mjs
 tests/journal.test.mjs
 tests/lib.mjs
 tests/locked.test.mjs
+tests/offline.test.mjs
 tests/owner.test.mjs
 tests/photos.test.mjs
 tests/planner.test.mjs

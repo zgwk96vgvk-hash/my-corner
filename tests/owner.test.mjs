@@ -98,7 +98,7 @@ for (const [name, opts] of [['a computer', DESK], ['a phone', PHONE]]) {
       await p.locator('.okit-me').first().click();
       await p.locator('.okit-menu button', { hasText: 'Control Panel' }).click();
       await p.waitForSelector('.okit-host .cp-item');
-      eq(await p.locator('.okit-host .cp-item').count(), 14, 'its categories');
+      eq(await p.locator('.okit-host .cp-item').count(), 15, 'its categories');
       await p.locator('.okit-close').click();
       await p.waitForFunction(() => !document.querySelector('.okit-host'));
     });
@@ -404,6 +404,31 @@ await test('the welcome screen’s owner tile signs you in, back to the site', a
     await p.waitForSelector('.okit-plus');
     eq(new URL(p.url()).search, '', 'the address tidied');
   }, '/#/welcome');
+});
+
+await test('a long title is never hidden under a post’s ⋯ (journal pages, reviews)', async () => {
+  await putFile('places/long-name.md', `---\ndate: ${at(2)}\ntitle: Birmingham Museum & Art Gallery and its very long name indeed\ncity: Birmingham\nlat: 52.48\nlon: -1.9\n---\nPaintings.\n`);
+  await putFile('books/long-book.md', `---\ndate: ${at(2)}\ntitle: A Very Long Book Title That Goes On and On Across the Page\nstatus: read\nrating: 4\n---\nGood.\n`);
+  const covered = (p) =>
+    p.evaluate(() => {
+      const btn = [...document.querySelectorAll('.okit-more')].find((b) => b.offsetParent && b.closest('[data-post]')?.querySelector('h2'));
+      if (!btn) return 'no ⋯';
+      const a = btn.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(btn.closest('[data-post]').querySelector('h2'));
+      return [...range.getClientRects()].some((r) => Math.min(a.right, r.right) - Math.max(a.left, r.left) > 1 && Math.min(a.bottom, r.bottom) - Math.max(a.top, r.top) > 1) ? 'covered' : 'clear';
+    });
+  for (const opts of [PHONE, DESK])
+    for (const path of ['/?owner=1#/journal/long-name', '/?owner=1#/books/long-book'])
+      await site(
+        opts,
+        async (p) => {
+          await p.waitForSelector('.okit-more.by-title');
+          await p.waitForTimeout(300);
+          eq(await covered(p), 'clear', path);
+        },
+        path
+      );
 });
 
 const failed = report();

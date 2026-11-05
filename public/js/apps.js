@@ -25,6 +25,8 @@ import { dressCard, profileDecor } from './card-dress.js';
 import { cabinetEntrance } from './cabinet.js';
 import { plannerApp } from './planner.js';
 import { commentLink, commentsBlock, commentsButton } from './comments.js';
+import { reactionRow } from './reactions.js';
+import { seriesLine, seriesTag, startHerePost, startHereWrap, fortuneCookie, photoOfTheDay } from './extras.js';
 import { activeSkin, resolveSkin, word, postFontAttrs } from './skins.js';
 
 const session = storage('session');
@@ -129,7 +131,9 @@ function miniMap(post) {
 
 function cardHead(post, icon, label, svg) {
   const href = SHELF_TYPES.includes(post.type) ? `#/${post.type}/${post.slug}` : `#/post/${post.type}/${post.slug}`;
-  return h('header', { class: 'card-head' }, iconEl(svg || ICON[icon]), h('strong', null, label), h('a', { class: 'card-date', href }, niceDate(post.date, true)));
+  // (A part of a series, and how long a longer post takes to read: small, beside the date.)
+  const read = post.read_mins ? h('span', { class: 'card-read', title: `${post.words} words` }, `${post.read_mins} min read`) : null;
+  return h('header', { class: 'card-head' }, iconEl(svg || ICON[icon]), h('strong', null, label), seriesTag(post), read, h('a', { class: 'card-date', href }, niceDate(post.date, true)));
 }
 
 // `open`: the post on its own page (a memory's ribbon is bigger there).
@@ -146,6 +150,9 @@ export function card(post, open = false) {
     const link = commentLink(post);
     if (link && el) el.append(link);
   }
+  // (A ♥, a ☆ or a smile, in one tap.)
+  const reacts = el ? reactionRow(post) : null;
+  if (reacts) el.append(reacts);
   // (In the highlights cabinet: a little gold rosette, leading to it.)
   if (post.highlight && el && !post.friend_look) el.append(h('a', { class: 'card-rosette', href: '#/highlights', title: 'In my highlights' }, post.highlight === 1 ? '№ 1 in my highlights' : 'In my highlights'));
   return el;
@@ -228,10 +235,11 @@ function profileTile(data, here = false) {
     h(
       'div',
       { class: 'profile-text' },
-      h('div', { class: 'profile-name' }, h('strong', null, data.site.owner || data.site.name), nudgeButton(data.site), notifyButton(data)),
+      h('div', { class: 'profile-name' }, h('strong', null, data.site.owner || data.site.name), nudgeButton(data.site), notifyButton(data), fortuneCookie(data)),
       h('div', { class: 'profile-sub' }, latest ? h('span', { class: 'small' }, 'Last post · ' + niceDate(latest.date)) : null, decor.stickers),
       statusBlock(data)
-    )
+    ),
+    photoOfTheDay(data)
   );
 }
 
@@ -246,8 +254,10 @@ function feed(filter, withProfile) {
     const rest = list.filter((p) => !p.pinned);
     const theirs = filter === 'all' && withProfile ? (ctx.data.friendsInHome || []).map((p) => ({ ...p, fromFriend: true })) : [];
     const mixed = theirs.length ? [...rest, ...theirs].sort((a, b) => (b.ts || 0) - (a.ts || 0)) : rest;
-    const posts = [...list.filter((p) => p.pinned), ...mixed];
-    const wrap = h('div', { class: 'feed' }, withProfile ? profileTile(ctx.data) : null);
+    // (New visitors: the post you've chosen to start with, first of all, until they close it.)
+    const first = filter === 'all' && withProfile ? startHerePost(ctx.data) : null;
+    const posts = [...list.filter((p) => p.pinned), ...mixed].filter((p) => p !== first);
+    const wrap = h('div', { class: 'feed' }, withProfile ? profileTile(ctx.data) : null, first ? startHereWrap(first, card(first)) : null);
     if (!posts.length) {
       wrap.append(h('p', { class: 'empty' }, 'Nothing here yet.'));
       return wrap;
@@ -341,7 +351,7 @@ function single(ctx) {
   const [type, slug] = String(ctx.param || '').split('/');
   const post = ctx.data.posts.find((p) => p.type === type && p.slug === slug);
   if (!post) return h('div', { class: 'feed' }, h('p', { class: 'empty' }, 'That post is not here any more.'), h('a', { class: 'xp-btn', href: '#/' }, '‹ Back home'));
-  return h('div', { class: 'feed' }, card(post, true), commentsBlock(post, ctx.data), h('a', { class: 'xp-btn', href: '#/' }, '‹ Back home'));
+  return h('div', { class: 'feed' }, card(post, true), seriesLine(post), commentsBlock(post, ctx.data), h('a', { class: 'xp-btn', href: '#/' }, '‹ Back home'));
 }
 
 // ---------- Leather journal ----------
@@ -422,8 +432,10 @@ function journal(ctx) {
     h('a', { class: 'paper-pill', href: '#/journal/shelf' }, 'All my journals'),
     h('a', { class: 'paper-pill', href: post.city ? `#/passport/${slug}` : '#/passport' }, 'Passport'),
     h('a', { class: 'leather-pill', href: mapWrap ? `#/atlas/${slug}` : '#/atlas' }, 'Map of everywhere'),
-    commentsButton(post, ctx.data)
+    commentsButton(post, ctx.data),
+    reactionRow(post, ctx.data, 'on-paper')
   );
+  const inSeries = seriesLine(post, 'on-paper');
   // Photos and keepsakes, in the order they're stuck in; then Floppy and the "Also in" note.
   const scraps = [...scrapOrder(post), () => floppyMargin(post), () => alsoIn(post, all)];
   if (ctx.desktop || ctx.tablet) {
@@ -432,11 +444,11 @@ function journal(ctx) {
     // still left over fill scrapbook pages after the writing, so nothing needs scrolling.
     // How far through the journal this entry is (0 = the oldest), for the thickness of the page stacks.
     const through = list.length > 1 ? i / (list.length - 1) : 0.5;
-    return pagedSpread({ through, extras: pageExtras(post), scraps, left: h('div', { class: 'left-stick' }, mapWrap), head: [journalHead, chips, rating].filter(Boolean), body: withFont(prose(post.html, 'ruled'), post), foot: [nav, links], title: post.title || 'This place' });
+    return pagedSpread({ through, extras: pageExtras(post), scraps, left: h('div', { class: 'left-stick' }, mapWrap), head: [journalHead, chips, rating].filter(Boolean), body: withFont(prose(post.html, 'ruled'), post), foot: [inSeries, nav, links].filter(Boolean), title: post.title || 'This place' });
   }
   // A phone: one page. The first photos lead, then the writing with the rest woven in between
   // paragraphs, and whatever's left at the end.
-  return h('div', { class: 'page single' }, mapWrap, journalHead, chips, rating, ...weave(withFont(prose(post.html, 'ruled'), post), scraps, post), nav, links);
+  return h('div', { class: 'page single' }, mapWrap, journalHead, chips, rating, ...weave(withFont(prose(post.html, 'ruled'), post), scraps, post), inSeries, nav, links);
 }
 
 // ---------- the shelf of journals, one per year ----------
@@ -784,7 +796,9 @@ const SCENES = {
 };
 // Which painting suits the place, unless you chose one.
 const SCENE_FOR = { food: 'city', coffee: 'city', drinks: 'city', shopping: 'city', culture: 'city', sights: 'city', nature: 'forest', stays: 'countryside' };
-const sceneSvg = (name) => `<svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">${(SCENES[name] || SCENES.seaside)()}</svg>`;
+// (Each painting's sky has a name of its own, so several on one page keep their own colours.)
+let sceneN = 0;
+const sceneSvg = (name) => `<svg viewBox="0 0 300 200" preserveAspectRatio="xMidYMid slice" width="100%" height="100%">${(SCENES[name] || SCENES.seaside)().replace(/\bpcs\b/g, `pcs${++sceneN}`)}</svg>`;
 
 // Long names get smaller letters rather than breaking in the middle of a word.
 const greetSize = (name) => (name.length > 16 ? '14px' : name.length > 12 ? '17px' : name.length > 9 ? '20px' : '24px');
@@ -1680,6 +1694,8 @@ function guestbook(ctx) {
     digits.setAttribute('aria-label', `Visitor number ${n ?? 0}`);
   };
   setDigits(Number(session.getItem('visitor-number')) || 0);
+  // (Being counted just now, as the site opened: the number a moment later.)
+  if (session.getItem('visitor-number') === '0') setTimeout(() => setDigits(Number(session.getItem('visitor-number')) || 0), 1500);
   if (!session.getItem('visitor-number')) {
     fetch('/api/visit', { method: 'POST' })
       .then((r) => r.json())
@@ -1693,7 +1709,21 @@ function guestbook(ctx) {
   }
 
   const entries = ctx.data.guestbook.map((g) =>
-    h(
+    g.card
+      ? // A postcard: its painted front, and on the back, the message and who it's from.
+        h(
+          'div',
+          { class: 'gb-postcard', 'data-gb': `${g.date}|${g.name}` },
+          h('div', { class: 'gbp-front', 'aria-hidden': 'true', html: sceneSvg(g.card) }),
+          h(
+            'div',
+            { class: 'gbp-back' },
+            h('p', { class: 'gbp-words' }, g.message),
+            h('p', { class: 'gbp-from' }, '— ', h('strong', null, g.name), h('span', { class: 'gb-date' }, ' · ' + niceDate(g.date))),
+            g.reply ? h('div', { class: 'gb-reply' }, h('strong', null, (ctx.data.site.owner || 'Reply') + ' '), g.reply) : null
+          )
+        )
+      : h(
       'div',
       { class: 'gb-entry', 'data-gb': `${g.date}|${g.name}` },
       h('span', { class: 'gb-avatar', html: ICON.person('#1d4f86') }),
@@ -1716,8 +1746,10 @@ function guestbook(ctx) {
         const f = new FormData(e.target);
         try {
           await postForm('/api/guestbook', Object.fromEntries(f.entries()));
+          const sentCard = !!f.get('card');
           e.target.reset();
-          msg.textContent = 'Thanks for signing! It appears once it has been approved.';
+          e.target.querySelector('.gb-card-peek')?.setAttribute('hidden', '');
+          msg.textContent = sentCard ? 'Your postcard is on its way! It appears once it has been approved.' : 'Thanks for signing! It appears once it has been approved.';
           sound.chime();
         } catch (err) {
           msg.textContent = err.message;
@@ -1727,6 +1759,16 @@ function guestbook(ctx) {
     h('span', { class: 'gb-label' }, 'Sign the guestbook'),
     h('input', { name: 'name', class: 'droid-field', placeholder: 'Your name', 'aria-label': 'Your name', maxlength: 40 }),
     h('div', { class: 'gb-row' }, h('input', { name: 'message', class: 'droid-field', placeholder: 'Write something nice…', 'aria-label': 'Message', required: true, maxlength: 600 }), h('button', { type: 'submit', class: 'droid-btn' }, 'Sign')),
+    // (Or as a postcard, with a painted front.)
+    (() => {
+      const pick = h('select', { name: 'card', class: 'droid-field gb-card-pick', 'aria-label': 'Send it as a postcard' }, h('option', { value: '' }, '📮 Send it as a postcard? (optional)'), ...[['seaside', 'By the sea'], ['city', 'City lights'], ['countryside', 'Countryside'], ['forest', 'Forest'], ['mountains', 'Mountains'], ['lakeside', 'Lakeside']].map(([v, l]) => h('option', { value: v }, `Postcard: ${l}`)));
+      const peek = h('span', { class: 'gb-card-peek', 'aria-hidden': 'true', hidden: true });
+      pick.addEventListener('change', () => {
+        peek.hidden = !pick.value;
+        peek.innerHTML = pick.value ? sceneSvg(pick.value) : '';
+      });
+      return h('div', { class: 'gb-row gb-card-row' }, pick, peek);
+    })(),
     h('input', { name: 'website', class: 'hp', tabindex: '-1', autocomplete: 'off', 'aria-hidden': 'true' }),
     msg
   );
