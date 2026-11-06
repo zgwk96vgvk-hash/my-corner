@@ -223,6 +223,7 @@ scripts/update-from-template.mjs
 scripts/vendor.mjs
 src/auth.js
 src/content.js
+src/email.js
 src/friends.js
 src/push.js
 src/strip.js
@@ -232,6 +233,7 @@ tests/admin.test.mjs
 tests/atlas.test.mjs
 tests/comments.test.mjs
 tests/designs.test.mjs
+tests/email.test.mjs
 tests/extras.test.mjs
 tests/fixtures/goodreads.csv
 tests/fixtures/iphone.heic

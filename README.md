@@ -278,6 +278,20 @@ Every photo from every post also lands in the **Photo album** (`#/album`): an ol
 - **Header mistakes:** the part between the `---` lines has to be read by the site. If something there can't be read (most often a colon inside a value, like `title: Rome: day one`; put such text in "double quotes"), the editor won't save it and says which line is wrong, so a post can never vanish from the site by accident. A file with a mistake that got into the bucket some other way opens as text with the problem shown.
 - **Time zone:** post times are read as UK time, summer time included. Change `TIMEZONE` in `wrangler.jsonc` if you live elsewhere.
 
+## Posting by email
+
+Write an email, attach some photos, send it to your site's own secret address, and it's a post. The subject is its title and the email's words are the post. With photos attached it's a photo dump (up to a dozen, each cleaned of hidden data like any other photo); without, a thought. A signature (from a line that's just `-- `), "Sent from my iPhone" and the email you're replying to are left off.
+
+It needs a domain of your own on Cloudflare (see [Your own domain](#your-own-domain-optional)), because it uses Cloudflare's free Email Routing. Then:
+
+1. Signed in, open **Control Panel › Post by email**, check the address you'll send from (you can list up to ten, one a line) and tap **Turn on**. You get a secret address like `post-k3x9q2m7a8bz`.
+2. In Cloudflare, open your domain, then **Email › Email Routing** (switch it on if it asks). Under **Routing rules**, **Create address**: type the `post-…` part, choose the action **Send to a Worker**, and pick your site.
+3. Send an email to `post-…@your-domain` from your own address.
+
+**Drafts or straight on.** To start with, an emailed post waits as a draft for you to look over; untick **Keep it as a draft for me to check first** to put them straight on the site. `[draft]` or `[now]` in a subject decides for that one email. You're told when one arrives (turn it on under Control Panel › Notifications), and **Lately** lists the last few emails and what happened to each.
+
+**Safe.** An email only becomes a post when it's sent to your secret address, from one of your addresses, and the email's own checks don't say it's forged. Anything else is dropped without a reply, so a stranger never learns the address exists. Treat the address like a password; **New secret address** swaps it (change it in Cloudflare too). Your own emails that can't be used (an empty one, or one over 25 MB) bounce back to you saying why.
+
 ## Books, films, TV, podcasts and music
 
 Five shelves, each in its own style: a wooden **Bookshelf**, a **Cinema** of ticket stubs, **TV** shows as video tapes in front of an old set, **Podcasts** on cassette tapes, and a **Record crate** of album sleeves and 7-inch singles. Covers are drawn by the site with the title only.
@@ -341,6 +355,12 @@ Signed in, you then see their posts in your own Home, mixed in with yours by whe
 
 **Notes between friends (mail).** Send a friend a short note, like the old days: **✉** by their name on the Friends tab, **✉ Note** under one of their posts, or **✎ New note** in **Mail** (the envelope by your tile in the taskbar or dock, your menu, or **Control Panel › Mail**). It goes straight to their site, signed like everything else between your two sites, and only they can read it, signed in: it's never on either site, never shown to visitors and never passed on. When one arrives, the newest pops up on its own (a yellow balloon over the tray on a computer, a banner along the top on a phone or tablet) with **Read it** and **Reply**, and the envelope shows how many are new; every note, read or not, waits in **Mail**, with the ones you've sent. Mail sits side by side (the list, and the note you're reading) on a wide screen, and one at a time with **‹ Back** on a narrow one. Notes are up to 600 characters; a friend can send twenty an hour, and your site keeps the newest few hundred. Your site checks for new mail every minute and a half while it's open.
 
+**Tagging friends.** In the editor's **Options**, **👥 Who it's with** shows your friends as chips: tap the ones a post is with (saved as `with:`, a list of their sites' addresses). The post then says "👥 with Sam" under it, the name linking to their site. Visitors only see it while they can see who your friends are (not when your friends are private). Your friend's site tells them they were tagged, and the post is marked **🏷 with you** on their side.
+
+**Shared albums.** On a photo dump, **📷 A shared album** picks friends who may add their own photos to it (`album_with:`). They get a **📷 Add photos** button under it on their site. Their photos are made small and cleaned of hidden data, sent through their site to yours, and go after your own photos with their name ("📷 Sam"), up to 30 from each friend. You're told when one arrives. In the editor, **Friends' photos in it** shows who gave which, with **Remove** for any you don't want. Deleting the post deletes theirs too.
+
+**The friends ring.** Like the webrings of the old web: your About page gets **‹ Previous · 🎲 Random · Next ›**, going round you and your friends' sites in order of address. It shows only while visitors can see who your friends are. Untick **A webring on my About page** under Control Panel › Friends to take it off.
+
 Only published posts are shared: drafts and posts scheduled for later stay private. Every friendship gets its own secret, known only to those two sites, and every request between them is signed with it, so nobody else can read your friend feed or pretend to be your friend. Friends' photos come through your own site, so visitors' browsers never connect to theirs. Secrets and the copies of friends' posts are kept apart from your files and are never in the export. **Remove buddy** unfollows both ways (notes you've already had stay in Mail).
 
 **Who sees your friends** is up to you, under **Who sees your friends' posts on your site?** (Control Panel › Friends; the Friends tab also says who can see it, with **Change**):
@@ -363,7 +383,8 @@ Your site can tell your phone or computer about things even when it isn't open, 
 
 - **Comments waiting for you**, and guestbook signatures, suggestions, and comments from friends;
 - **Notes from friends** (Mail);
-- **Friends' new posts**.
+- **Friends' new posts**;
+- **Posts sent by email**, when one arrives (see [Posting by email](#posting-by-email)).
 
 **Send a test** checks it works; **Your devices** lists every device that gets them, and **Remove** stops one. Only a device signed in through Cloudflare Access can sign up for these.
 
