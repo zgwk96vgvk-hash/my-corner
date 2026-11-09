@@ -26,6 +26,7 @@ import { cabinetEntrance } from './cabinet.js';
 import { plannerApp } from './planner.js';
 import { commentLink, commentsBlock, commentsButton } from './comments.js';
 import { reactionRow } from './reactions.js';
+import { quietSite, privateScene } from './private-scene.js';
 import { seriesLine, seriesTag, startHerePost, startHereWrap, fortuneCookie, photoOfTheDay, withLine, webring } from './extras.js';
 import { activeSkin, resolveSkin, word, postFontAttrs } from './skins.js';
 
@@ -262,7 +263,8 @@ function feed(filter, withProfile) {
     const posts = [...list.filter((p) => p.pinned), ...mixed].filter((p) => p !== first);
     const wrap = h('div', { class: 'feed' }, withProfile ? profileTile(ctx.data) : null, first ? startHereWrap(first, card(first)) : null);
     if (!posts.length) {
-      wrap.append(h('p', { class: 'empty' }, 'Nothing here yet.'));
+      // (A site with nothing on it yet, for visitors: a little something instead.)
+      wrap.append(quietSite(ctx.data) ? privateScene(ctx.data) : h('p', { class: 'empty' }, 'Nothing here yet.'));
       return wrap;
     }
     let shown = 0;

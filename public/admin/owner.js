@@ -388,7 +388,7 @@ const CP = [
   ['Writing', [['posts', 'Posts & drafts', 'Every post, drafts and scheduled ones included: find, pin, edit', '🗂'], ['highlights', 'Highlights', 'The cabinet’s shelves, in order, with why', '★'], ['planner', 'Planner', 'Your lists, private ones too', '📒'], ['email', 'Post by email', 'Email your site, and it’s a post (photos too)', '📧']]],
   ['People', [['notifications', 'Inbox', 'Comments, signatures, suggestions, nudges, friends’ news', '✉'], ['friends', 'Friends', 'Your buddies, and who sees what', '👥'], ['mail', 'Mail', 'Notes from friends, and ones you’ve sent', '📨'], ['notify', 'Notifications', 'On your phone or computer, even with the site closed', '🔔'], ['status', 'Status', 'How you are, your message, a countdown', '💬']]],
   ['Look', [['themes', 'Themes', 'Colours, wallpaper, fonts and the rest, on your real site as you choose', '🎨'], ['designs', 'Designs', 'The visa in your passport, and keepsakes of your own', '🎟']]],
-  ['Your site', [['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['visitors', 'Visitors', 'How many, and which countries they come from', '🌍'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
+  ['Your site', [['privacy', 'Privacy', 'Who sees your posts: everyone, friends or only you', '🔒'], ['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['visitors', 'Visitors', 'How many, and which countries they come from', '🌍'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
 ];
 const CP_NAME = Object.fromEntries(CP.flatMap(([, items]) => items.map(([id, name]) => [id, name])));
 CP_NAME.comments = 'Comments';
@@ -484,6 +484,11 @@ function openPage(id) {
     setPage(id);
     if (host) host.mail = false;
     return drawEmail(host.body);
+  }
+  if (id === 'privacy') {
+    setPage(id);
+    if (host) host.mail = false;
+    return drawPrivacy(host.body);
   }
   if (host) host.mail = false;
   setPage(id);
@@ -584,6 +589,25 @@ function meMenu(anchor) {
     'You'
   );
 }
+// Who sees a post: everyone, friends or only you (nothing more open than the whole site is).
+function whoMenu(anchor, p) {
+  const now = p.only_me ? 2 : p.friends_only ? 1 : 0;
+  const site = kit.siteLevel();
+  const choices = [
+    ['🌍', 'Everyone'],
+    ['👥', 'Friends only'],
+    ['🔒', 'Only me']
+  ];
+  popMenu(
+    anchor,
+    [
+      ...choices.map(([icon, label], i) => (i < site ? null : { label: (i === now ? '✓ ' : '') + label, icon, run: () => i !== now && kit.setLevel(kit.post(p.key) || p, i) })),
+      site ? '-' : null,
+      site ? { label: 'Whole site’s privacy…', icon: '⚙', run: () => controlPanel('privacy') } : null
+    ].filter((x) => x !== null),
+    'Who sees it'
+  );
+}
 function postMenu(anchor, p) {
   const shelf = SHELVES.includes(p.type);
   const rank = shelf ? kit.highlightRank(kit.post(p.key) || p) : 0;
@@ -592,9 +616,9 @@ function postMenu(anchor, p) {
     [
       { label: 'Edit', icon: '✎', run: () => editPost(p, anchor.closest('[data-post]')) },
       { label: p.pinned ? 'Unpin' : 'Pin to the top', icon: '📌', run: () => kit.togglePin(kit.post(p.key) || p) },
-      p.friends_only ? null : { label: p.start_here ? 'Not “Start here” any more' : 'Start here (new visitors see it first)', icon: '👋', run: () => kit.toggleFlag(kit.post(p.key) || p, 'start_here', p.start_here ? 'Back in its usual place.' : 'New visitors see it first now, until they close it.') },
+      p.friends_only || p.only_me ? null : { label: p.start_here ? 'Not “Start here” any more' : 'Start here (new visitors see it first)', icon: '👋', run: () => kit.toggleFlag(kit.post(p.key) || p, 'start_here', p.start_here ? 'Back in its usual place.' : 'New visitors see it first now, until they close it.') },
       shelf ? { label: rank ? `Out of my highlights (№${rank})` : 'Add to my highlights', icon: '★', run: () => (rank ? kit.takeOutHighlight(kit.post(p.key) || p) : kit.addHighlight(kit.post(p.key) || p)) } : null,
-      { label: p.friends_only ? 'For everyone' : 'Friends only', icon: '👥', run: () => kit.toggleFlag(kit.post(p.key) || p, 'friends_only', p.friends_only ? 'On the site for everyone.' : 'Friends only now: off the site.') },
+      { label: `Who sees it: ${p.only_me ? 'only me' : p.friends_only ? 'friends' : 'everyone'}…`, icon: p.only_me ? '🔒' : p.friends_only ? '👥' : '🌍', run: () => whoMenu(anchor, p) },
       p.photos?.length ? { label: p.profile ? 'Off my profile grid' : 'On my profile grid', icon: '▦', run: () => kit.toggleFlag(kit.post(p.key) || p, 'profile', p.profile ? 'Off the grid.' : 'On your profile grid.') } : null,
       '-',
       { label: 'Delete…', icon: '🗑', danger: true, run: () => kit.remove(kit.post(p.key) || p) }
@@ -706,6 +730,7 @@ function decorateBars() {
 function stateOf(p) {
   if (p.draft) return ['draft', 'Draft'];
   if (p.ts > Date.now()) return ['later', `Scheduled · ${new Date(p.ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`];
+  if (p.only_me) return ['me', '🔒 Only me'];
   if (p.friends_only) return ['friends', '👥 Friends only'];
   return null;
 }
@@ -1524,6 +1549,117 @@ async function drawNotify(body) {
   );
   body.replaceChildren(h('div', { class: 'nt' }, thisDevice, what, devices, visitors));
 }
+// ---------- privacy, all at once ----------
+// Control Panel › Privacy: who sees your posts, every one of them at once. More private changes
+// every post there and then; more open changes none (the ones still more private than the site
+// are listed, to open up again all together or one by one).
+const LEVEL_NAMES = [
+  ['public', '🌍', 'Everyone', 'Visitors and friends see your posts (apart from any you’ve made more private).'],
+  ['friends', '👥', 'Friends', 'Visitors still get your site (About, guestbook, its look) but no posts. Friends see them, on their sites.'],
+  ['me', '🔒', 'Only me', 'Nobody else sees any post: not visitors, not friends. Visitors get your site, with a little something instead.']
+];
+function drawPrivacy(body) {
+  const posts = (owner?.posts || []).filter((p) => !p.error && p.key);
+  const site = kit.siteLevel();
+  const levelOf = (p) => (p.only_me ? 2 : p.friends_only ? 1 : 0);
+  const still = posts.filter((p) => levelOf(p) > site).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const busy = h('p', { class: 'pv-busy', role: 'status' });
+  const again = () => drawPrivacy(body);
+  const choose = async (i) => {
+    if (i === site) return;
+    const more = posts.filter((p) => levelOf(p) < i).length;
+    if (i > site && more && !confirm(`Make ${more === 1 ? 'your 1 post' : `all ${more} posts`} that ${more === 1 ? 'is' : 'are'} more open ${i === 2 ? 'only for you' : 'friends only'}?\n\nSwitching back later won’t open them up again: you’d do that here, all together or one by one.`)) return;
+    body.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    busy.textContent = more && i > site ? `Changing ${more} posts…` : 'Saving…';
+    try {
+      const out = await kit.privacy.set(LEVEL_NAMES[i][0], (n, left) => left && (busy.textContent = `Changed ${n}; ${left} to go…`));
+      toast(i > site && out.changed ? `Done: ${out.changed} post${out.changed === 1 ? '' : 's'} made ${i === 2 ? 'only for you' : 'friends only'}.` : `Your site is set to ${LEVEL_NAMES[i][2].toLowerCase()} now.`);
+    } catch (e) {
+      toast(e.message, true);
+    }
+    again();
+  };
+  const reopen = async (keys, label) => {
+    body.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    busy.textContent = 'Opening up…';
+    try {
+      const out = await kit.privacy.reopen(keys, LEVEL_NAMES[site][0]);
+      toast(`${label || (out.changed === 1 ? '1 post' : `${out.changed} posts`)}: ${site === 1 ? 'friends only now' : 'for everyone now'}.`);
+    } catch (e) {
+      toast(e.message, true);
+    }
+    again();
+  };
+  const cards = h(
+    'div',
+    { class: 'pv-levels', role: 'radiogroup', 'aria-label': 'Who sees your posts' },
+    LEVEL_NAMES.map(([k, icon, name, what], i) =>
+      h('button', { type: 'button', role: 'radio', class: 'pv-level' + (i === site ? ' on' : ''), 'aria-checked': String(i === site), 'data-level': k, onclick: () => choose(i) }, h('span', { class: 'pv-ico', 'aria-hidden': 'true' }, icon), h('b', null, name), h('small', null, what))
+    )
+  );
+  const word = (p) => (p.only_me ? '🔒 Only me' : '👥 Friends only');
+  const when = (p) => (p.ts ? new Date(p.ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  // A few at once: tick them (or all of them), then open up just those.
+  const picked = new Set();
+  const to = site === 1 ? 'friends only' : 'for everyone';
+  const shown = still.slice(0, 200);
+  const all = h('input', { type: 'checkbox', class: 'pv-all', 'aria-label': 'Choose them all' });
+  const openPicked = btn('Open up the ones ticked', 'pv-open-picked', () => {
+    const keys = [...picked];
+    if (keys.length && confirm(`Make ${keys.length === 1 ? 'this one' : `these ${keys.length}`} ${to}?`)) reopen(keys, keys.length === 1 ? '1 post' : `${keys.length} posts`);
+  });
+  const sync = () => {
+    openPicked.disabled = !picked.size;
+    openPicked.textContent = picked.size ? `Open up ${picked.size} ticked` : 'Open up the ones ticked';
+    all.checked = picked.size === shown.length;
+    all.indeterminate = picked.size > 0 && picked.size < shown.length;
+  };
+  const boxes = [];
+  all.addEventListener('change', () => {
+    for (const [key, box] of boxes) {
+      box.checked = all.checked;
+      all.checked ? picked.add(key) : picked.delete(key);
+    }
+    sync();
+  });
+  const row = (p) => {
+    const box = h('input', { type: 'checkbox', class: 'pv-pick', 'aria-label': `Choose “${p.title || p.excerpt || p.slug}”` });
+    box.addEventListener('change', () => {
+      box.checked ? picked.add(p.key) : picked.delete(p.key);
+      sync();
+    });
+    boxes.push([p.key, box]);
+    return h(
+      'li',
+      { 'data-key': p.key },
+      // (The whole row ticks its box, apart from its own button.)
+      h('label', { class: 'pv-row' }, box, h('span', { class: 'pv-badge' }, word(p)), h('span', { class: 'pv-title' }, p.title || p.excerpt || p.slug), h('small', null, [TYPE_WORD[p.type] || '', when(p)].filter(Boolean).join(' · '))),
+      btn('Open up', 'pv-open', () => reopen([p.key], p.title ? `“${p.title}”` : 'That post'))
+    );
+  };
+  const list = still.length
+    ? h(
+        'section',
+        { class: 'nt-box pv-still' },
+        h('h3', null, `Still more private than that (${still.length})`),
+        h('p', null, `These stay as they are until you open them up: one at a time, the ones you tick, or all of them. Opening one up makes it ${to}, like the rest.`),
+        h('div', { class: 'pv-bar' }, h('label', { class: 'pv-all-label' }, all, h('span', null, 'All')), openPicked, btn(`Open up all ${still.length}`, '', () => confirm(`Make all ${still.length} ${to}?`) && reopen(null, `All ${still.length}`))),
+        h('ul', { class: 'pv-list' }, shown.map(row))
+      )
+    : site < 2
+      ? h('section', { class: 'nt-box' }, h('p', { class: 'nt-none' }, `Every post is as open as your site: ${site === 1 ? 'friends only' : 'for everyone'}.`))
+      : null;
+  sync();
+  body.replaceChildren(
+    h(
+      'div',
+      { class: 'nt pv' },
+      h('section', { class: 'nt-box' }, h('h3', null, '🔒 Who sees your posts'), h('p', null, 'All of them, at once. Making it more private changes every post there and then. Making it more open changes none of them: any still more private are listed below, to open up when you choose.'), cards, busy),
+      list
+    )
+  );
+}
+
 // ---------- posting by email ----------
 // Control Panel › Post by email: on or off, your secret address (and how to set it up on
 // Cloudflare), the addresses you send from, drafts or straight on, and the last few emails.

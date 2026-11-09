@@ -185,6 +185,7 @@ public/js/phone.js
 public/js/pictures.js
 public/js/pipes.js
 public/js/planner.js
+public/js/private-scene.js
 public/js/push-client.js
 public/js/reactions.js
 public/js/refresh.js
@@ -255,6 +256,7 @@ tests/owner.test.mjs
 tests/photos.test.mjs
 tests/planner.test.mjs
 tests/pool.test.mjs
+tests/privacy.test.mjs
 tests/profile.test.mjs
 tests/push.test.mjs
 tests/roundtrip.test.mjs
