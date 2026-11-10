@@ -1,5 +1,5 @@
 // Little extras around the posts: where a post sits in its series, who it's with, the "Start
-// here" post for new visitors, the fortune cookie, the photo of the day and the webring.
+// here" post for new visitors, the fortune cookie and the photo of the day.
 import { h, storage } from './util.js';
 import { sound } from './sound.js';
 import { postHref } from './comments.js';
@@ -43,33 +43,6 @@ export function withLine(post, cls = '') {
     parts.push(h('a', { href: b.url, target: '_blank', rel: 'noopener noreferrer' }, b.owner || b.name));
   });
   return h('p', { class: `with-line ${cls}` }, h('span', { 'aria-hidden': 'true' }, '👥 '), 'with ', ...parts);
-}
-
-// ---------- the webring ----------
-// You and your friends in a ring (in order of address): ‹ the one before, a random one, the
-// one after ›. Each friend's site has the same ring (theirs and their friends').
-export function webring(data) {
-  const here = location.origin;
-  const ring = [...new Set([...(data.webring || []), ...(data.webring?.length ? [here] : [])])].filter((u) => /^https?:\/\//.test(u)).sort();
-  if (ring.length < 2) return null;
-  const at = ring.indexOf(here);
-  const prev = ring[(at - 1 + ring.length) % ring.length];
-  const next = ring[(at + 1) % ring.length];
-  const others = ring.filter((u) => u !== here);
-  const host = (u) => u.replace(/^https?:\/\//, '');
-  const random = h('a', { class: 'ring-go ring-random', href: others[0], rel: 'noopener noreferrer', title: 'A friend’s site, at random' }, '🎲 Random');
-  random.addEventListener('click', (e) => {
-    e.preventDefault();
-    sound.click?.();
-    location.href = others[Math.floor(Math.random() * others.length)];
-  });
-  return h(
-    'nav',
-    { class: 'card webring', 'aria-label': 'Webring: my friends’ sites' },
-    h('span', { class: 'ring-title' }, '◎ The friends ring'),
-    h('span', { class: 'ring-row' }, h('a', { class: 'ring-go', href: prev, rel: 'noopener noreferrer', title: host(prev) }, '‹ Previous'), random, h('a', { class: 'ring-go', href: next, rel: 'noopener noreferrer', title: host(next) }, 'Next ›')),
-    h('small', { class: 'ring-count' }, `${ring.length} sites`)
-  );
 }
 
 // ---------- Start here ----------
@@ -133,12 +106,17 @@ export function fortuneCookie(data) {
 
 // ---------- photo of the day ----------
 // One of your photos, a different one each day (the same for everyone that day), opening its post.
+// (Picked by the site, by its own calendar, so your friends' reels show the very same one. Signed
+// in with nothing on the site for visitors, it's picked here from what you see.)
 export function photoOfTheDay(data) {
-  const all = data.posts.flatMap((p) => (p.photos || []).filter((src) => String(src).startsWith('/media/')).map((src, i) => ({ p, src, cap: p.captions?.[i] || p.title || '' })));
-  if (all.length < 2) return null;
-  const day = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
-  // (Spread through the year, so neighbours on the list aren't neighbours in time.)
-  const pick = all[(day * 7919) % all.length];
+  const chosen = data.photoOfDay;
+  const byPost = chosen && data.posts.find((p) => `${p.type}/${p.slug}` === chosen.post);
+  let pick = byPost ? { p: byPost, src: chosen.src, cap: chosen.cap } : null;
+  if (!pick && data.ownerView) {
+    const all = data.posts.filter((p) => !p.draft).flatMap((p) => (p.photos || []).filter((src) => String(src).startsWith('/media/')).map((src, i) => ({ p, src, cap: p.captions?.[i] || p.title || '' })));
+    if (all.length >= 2) pick = all[(Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000) * 7919) % all.length];
+  }
+  if (!pick) return null;
   return h(
     'a',
     { class: 'photo-day', href: postHref(pick.p), title: `Photo of the day${pick.cap ? ': ' + pick.cap : ''}` },

@@ -2,6 +2,7 @@
 // friend code, follow each other's posts, send each other notes, and refuse anyone else.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import { test, report, assert, eq, launch, close, adminPage, editPost, unfold, clickSave, api, putFile, getFile, publicData, overview, PHOTOS, BASE, chromium, openTab } from './lib.mjs';
 
 const BASE2 = process.env.TEST_BASE2 || 'http://localhost:8801';
@@ -153,36 +154,30 @@ await test('their posts show up (not drafts), with photos through your own site'
   await post_(api, 'friends/refresh');
   const feed = (await api('friends')).friends[0].cache.feed;
   eq(feed.posts.map((p) => p.title), ['Harbour walk'], 'only the published post');
+  // (Their posts are on the site, signed in: Control Panel › Friends doesn't list them again.)
   const page = await adminPage();
   await openTab(page, 'Friends');
-  await page.waitForSelector('.fr-feed .fr-post');
-  const card = page.locator('.fr-feed .fr-post').first();
-  assert((await card.innerText()).includes('Harbour walk'), 'post in the feed');
-  eq(await card.locator('.fr-text img').count(), 0, 'no pictures from the text');
-  eq(await card.locator('.fr-text a[href^="javascript"]').count(), 0, 'no script links');
-  eq(await card.locator('.fr-text a[href="https://example.com"]').count(), 1, 'ordinary links kept');
-  const src = await card.locator('.fr-photos img').first().getAttribute('src');
-  assert(src.startsWith('/admin/api/friends/photo?'), 'photo comes through your own site: ' + src);
-  await page.locator('.fr-photos img').first().scrollIntoViewIfNeeded();
-  const ok = await page.waitForFunction(() => { const img = document.querySelector('.fr-photos img'); return img.complete && img.naturalWidth > 0; }, null, { timeout: 10000 }).then(() => true, () => false);
-  assert(ok, 'the photo loads');
-  // And in the notifications.
+  await page.waitForSelector('.fr-privacy');
+  eq(await page.locator('.fr-feed, .fr-post, .pal-posts').count(), 0, 'no list of their posts in the Control Panel');
+  // In the notifications.
   await openTab(page, 'Notifications');
   await page.waitForSelector('.note-friendpost');
   assert((await page.locator('.note-friendpost').first().innerText()).includes('Harbour walk'), 'notification');
   await page.locator('.note-friendpost button', { hasText: 'See it' }).first().click();
   await page.waitForSelector('.pal-convo');
   assert((await page.locator('.pal-convo').innerText()).includes('Lina'), 'opens their panel');
+  eq(await page.locator('.pal-convo .fr-post').count(), 0, 'with no posts in it');
   assert(!page.errors.length, page.errors.join('; '));
   await page.close();
-  const bad = await fetch(`${BASE}/admin/api/friends/photo?friend=${encodeURIComponent('localhost_8801')}&p=${encodeURIComponent('../../site.md')}`);
+  const bad = await fetch(`${BASE}/friends-media/localhost_8801/${encodeURIComponent('../../site.md')}`);
   eq(bad.status, 404, 'odd photo names refused');
 });
 
 await test('your site has a Friends tab with their posts if you choose (to start with, they’re just for you)', async () => {
   const before = await publicData();
   eq([before.buddies, before.friendPosts, before.friendsTab], [[], [], false], 'to start with, visitors see nothing of your friends');
-  eq((await api('friends')).visibility, 'off', 'only you');
+  const fr = await api('friends');
+  eq([fr.listSeen, fr.postsSeen], ['me', 'me'], 'only you');
   await post_(api, 'friends/settings', { visibility: 'all' });
   const d = await publicData();
   eq(d.buddies.map((x) => [x.name, x.url, x.presence]), [['Lina Lounge', BASE2, 'busy']], 'buddies shown');
@@ -234,37 +229,63 @@ await test('a friends-only post: not on their site, nor on yours; only in your b
   const d = await publicData();
   assert(!d.friendPosts.some((p) => p.title === 'Just for friends'), 'not on my site’s Friends tab');
   eq((await fetch(BASE + '/friends-media/localhost_8801/thoughts/just-us/c.jpg')).status, 404, 'its photo isn’t for my visitors');
-  const page = await adminPage();
-  await openTab(page, 'Friends');
-  const card = page.locator('.fr-feed .fr-post', { hasText: 'Just for friends' });
-  await card.waitFor();
-  assert((await card.innerText()).includes('Friends only'), 'marked in the back office');
-  eq(await card.locator('.fr-open').count(), 0, 'no link to a page that isn’t public');
-  assert(!page.errors.length, page.errors.join('; '));
-  await page.close();
+  // Signed in, on your Friends tab: marked, with no link to a page that isn't public.
+  const browser = await chromium.launch();
+  try {
+    const p = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+    p.errors = [];
+    p.on('pageerror', (e) => p.errors.push(e.message));
+    await p.addInitScript(() => sessionStorage.setItem('entered', '1'));
+    await p.goto(BASE + '/?owner=1#/friends');
+    const card = p.locator('.feed.ff [data-friend-post$="|thoughts/just-us"]');
+    await card.waitFor();
+    assert((await card.innerText()).includes('friends only'), 'marked, for you');
+    eq(await card.locator('.ff-open').count(), 0, 'no link to a page that isn’t public');
+    assert(!p.errors.length, p.errors.join('; '));
+  } finally {
+    await browser.close();
+  }
 });
 
 await test('you choose who sees your friends, and friends choose whether you can show their posts', async () => {
   const photo = (await publicData()).friendPosts[0].photos[0];
   // Just the friends list: no posts, no photos, no Friends tab.
-  eq((await post_(api, 'friends/settings', { visibility: 'list' })).visibility, 'list', 'list only');
+  let set = await post_(api, 'friends/settings', { listSeen: 'everyone', postsSeen: 'me' });
+  eq([set.listSeen, set.postsSeen], ['everyone', 'me'], 'list only');
   let d = await publicData();
-  eq([d.buddies.map((b) => b.name), d.friendPosts, d.friendsTab], [['Lina Lounge'], [], false], 'the list, without posts');
+  eq([d.buddies.map((b) => b.name), d.friendPosts, d.friendDays, d.friendsTab], [['Lina Lounge'], [], [], false], 'the list, without posts');
   eq((await fetch(BASE + photo)).status, 404, 'and no photos');
+  // Just their posts: the Friends tab, without the list.
+  await post_(api, 'friends/settings', { listSeen: 'me', postsSeen: 'everyone' });
+  d = await publicData();
+  eq([d.buddies, d.friendPosts.length > 0, d.friendsTab], [[], true, true], 'their posts, without the list');
+  eq(d.friendPosts[0].friend.name, 'Lina Lounge', 'each still says who it’s from');
+  eq((await fetch(BASE + photo)).status, 200, 'with their photos');
+  // For friends only: visitors see neither (friends visiting do: see the visiting test).
+  set = await post_(api, 'friends/settings', { listSeen: 'friends', postsSeen: 'friends' });
+  eq([set.listSeen, set.postsSeen], ['friends', 'friends'], 'for friends');
+  d = await publicData();
+  eq([d.buddies, d.friendPosts, d.friendsTab], [[], [], false], 'visitors see nothing');
+  eq((await fetch(BASE + photo)).status, 404, 'nor the photos');
   // Only me: nothing.
-  await post_(api, 'friends/settings', { visibility: 'off' });
+  await post_(api, 'friends/settings', { listSeen: 'me', postsSeen: 'me' });
   d = await publicData();
   eq([d.buddies, d.friendPosts, d.friendsTab], [[], [], false], 'nothing at all');
+  // In the Control Panel: two choices, each Everyone, My friends or Only me.
   const page = await adminPage();
   await openTab(page, 'Friends');
   await page.waitForSelector('.fr-privacy');
-  assert(await page.locator('.fr-vis input[value="off"]').isChecked(), 'the back office shows the choice');
-  await page.locator('.fr-vis', { hasText: 'Everyone' }).click();
-  await page.waitForFunction(() => document.querySelector('.fr-vis input[value="all"]')?.checked && document.querySelector('.fr-vis.on input[value="all"]'));
+  eq(await page.locator('.fr-seen').count(), 2, 'two choices');
+  eq(await page.locator('.fr-seen').first().locator('.fr-vis').allInnerTexts(), ['👁 Everyone', '👥 My friends', '🔒 Only me'], 'each the same three');
+  assert(await page.locator('input[name="fr-listSeen"][value="me"]').isChecked() && (await page.locator('input[name="fr-postsSeen"][value="me"]').isChecked()), 'the back office shows the choice');
+  await page.locator('.fr-seen', { hasText: 'Their posts' }).locator('.fr-vis', { hasText: 'Everyone' }).click();
+  await page.waitForFunction(() => document.querySelector('.fr-vis.on input[name="fr-postsSeen"][value="everyone"]')?.checked);
+  await page.locator('.fr-seen', { hasText: 'Your friends list' }).locator('.fr-vis', { hasText: 'Everyone' }).click();
+  await page.waitForFunction(() => document.querySelector('.fr-vis.on input[name="fr-listSeen"][value="everyone"]')?.checked);
   assert(!page.errors.length, page.errors.join('; '));
   await page.close();
   d = await publicData();
-  eq([d.friendPosts.length > 0, d.friendsTab], [true, true], 'everyone again');
+  eq([d.buddies.length, d.friendPosts.length > 0, d.friendsTab], [1, true, true], 'everyone again');
   // Your friend says no to being shown on other sites: their posts leave yours (you still see them).
   eq((await post_(api2, 'friends/settings', { letShare: false })).letShare, false, 'friend says no');
   await until(async () => (await publicData()).friendPosts.length === 0, 'their posts leave your site (moments later)');
@@ -274,11 +295,14 @@ await test('you choose who sees your friends, and friends choose whether you can
   assert((await api('friends')).friends[0].cache.feed.posts.length > 0, 'you still see them yourself');
   await post_(api2, 'friends/settings', { letShare: true });
   await until(async () => (await publicData()).friendPosts.length > 0, 'back when they say yes (moments later)');
-  // The old setting still works.
+  // The old settings still work.
+  const seen = async () => (({ listSeen, postsSeen }) => [listSeen, postsSeen])(await api('friends'));
   await post_(api, 'friends/settings', { showOnSite: false });
-  eq((await api('friends')).visibility, 'off', 'old off');
+  eq(await seen(), ['me', 'me'], 'old off');
+  await post_(api, 'friends/settings', { visibility: 'list' });
+  eq(await seen(), ['everyone', 'me'], 'old list');
   await post_(api, 'friends/settings', { showOnSite: true });
-  eq((await api('friends')).visibility, 'all', 'old on');
+  eq(await seen(), ['everyone', 'everyone'], 'old on');
 });
 
 await test('signed in: their posts in your Home, a dot on Friends, and comments that go straight on', async () => {
@@ -588,7 +612,7 @@ await test('a post in full from a friend\'s site is made safe before anyone sees
   assert(!text.includes('javascript:'), 'nothing that runs');
 });
 
-await test('tagging a friend, a shared album they add photos to, and the webring', async () => {
+await test('tagging a friend, and a shared album they add photos to', async () => {
   const at = (d) => new Date(Date.now() - d * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
   await fetch(`${BASE2}/admin/api/upload?key=photos/beach/own.jpg`, { method: 'PUT', body: fs.readFileSync(PHOTOS[2]) });
   await fetch(`${BASE2}/admin/api/file?key=photos/beach.md`, { method: 'PUT', body: `---\ndate: ${at(1)}\ntitle: Beach day\nphotos: [own.jpg]\nwith: ["${BASE}"]\nalbum_with: ["${BASE}/"]\n---\nSand everywhere.\n` });
@@ -642,12 +666,11 @@ await test('tagging a friend, a shared album they add photos to, and the webring
   await post_(api2, 'albums/remove', { post: 'photos/beach', file: album[0].file });
   eq((await theirs()).photos.length, 1, 'taken out');
   eq((await fetch(BASE2 + b.photos[1])).status, 404, 'and deleted');
-  // Who it's with shows to their visitors only while they can see who their friends are; the
-  // webring too.
-  await post_(api2, 'friends/settings', { visibility: 'list', webring: true });
+  // Who it's with shows to their visitors only while they can see who their friends are.
+  await post_(api2, 'friends/settings', { visibility: 'list' });
   let pub = await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json();
   eq(pub.posts.find((x) => x.slug === 'beach').with, [BASE], 'with you, on their site');
-  eq(pub.webring, [BASE2, BASE, FAKE].sort(), 'the ring: them and their friends');
+  eq(pub.webring, undefined, 'no friends ring any more');
   const v = await chromium.launch();
   const vp = await v.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   vp.errors = [];
@@ -659,20 +682,15 @@ await test('tagging a friend, a shared album they add photos to, and the webring
     eq((await vp.locator('.with-line').innerText()).trim(), '👥 with Sam', 'on the post, linking to your site');
     eq(await vp.locator('.with-line a').getAttribute('href'), BASE, 'your site');
     await vp.evaluate(() => (location.hash = '#/about'));
-    await vp.waitForSelector('.webring');
-    const ring = [BASE2, BASE, FAKE].sort();
-    const i = ring.indexOf(BASE2);
-    eq(await vp.locator('.webring a', { hasText: 'Next' }).getAttribute('href'), ring[(i + 1) % 3], 'next in the ring');
-    eq(await vp.locator('.webring a', { hasText: 'Previous' }).getAttribute('href'), ring[(i + 2) % 3], 'the one before');
+    await vp.waitForSelector('.about-note');
+    eq(await vp.locator('.webring').count(), 0, 'no ring on About');
     assert(!vp.errors.length, vp.errors.join('; '));
   } finally {
     await v.close();
   }
-  await post_(api2, 'friends/settings', { webring: false });
-  eq((await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json()).webring, [], 'the ring, switched off');
-  await post_(api2, 'friends/settings', { visibility: 'off', webring: true });
+  await post_(api2, 'friends/settings', { visibility: 'off' });
   pub = await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json();
-  eq([pub.posts.find((x) => x.slug === 'beach').with, pub.webring], [[], []], 'friends private: no names, no ring');
+  eq(pub.posts.find((x) => x.slug === 'beach').with, [], 'friends private: no names');
   // Tagging from the editor: your friends as chips.
   await putFile('thoughts/walk.md', `---\ndate: ${at(2)}\ntitle: A walk\n---\nOut and about.\n`);
   const page = await adminPage();
@@ -694,6 +712,113 @@ await test('a post just for them never reaches a friend’s site', async () => {
   assert(theirs.some((x) => x.id === 'photos/beach'), 'their other posts arrive');
   assert(!theirs.some((x) => x.id === 'thoughts/hush'), 'not the one only for them');
   await fetch(`${BASE2}/admin/api/file?key=thoughts/hush.md`, { method: 'DELETE' });
+});
+
+await test('visiting a friend’s site as their friend: what’s for friends, with a pass; visitors see none of it', async () => {
+  const at = new Date(Date.now() - 20 * 60e3).toISOString().slice(0, 16).replace('T', ' ');
+  await fetch(`${BASE2}/admin/api/upload?key=thoughts/pals-only/p.jpg`, { method: 'PUT', body: fs.readFileSync(PHOTOS[3]) });
+  await fetch(`${BASE2}/admin/api/file?key=thoughts/pals-only.md`, { method: 'PUT', body: `---\ndate: ${at}\ntitle: Pals only\nfriends_only: true\nphotos: [p.jpg]\n---\nJust for friends.\n` });
+  await post_(api, 'friends/refresh');
+  // (A visitor to their site, not signed in, by another name than "localhost".)
+  const asVisitor = (path) => new Promise((res, rej) => http.get({ host: 'localhost', port: new URL(BASE2).port, path, headers: { Host: 'visitor.test', 'User-Agent': 'Mozilla/5.0 (Macintosh) Safari/605' } }, (r) => (r.resume(), res(r.statusCode))).on('error', rej));
+  eq(await asVisitor('/media/thoughts/pals-only/p.jpg'), 404, 'its photo isn’t for visitors');
+  assert(!(await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json()).posts.some((x) => x.slug === 'pals-only'), 'nor the post');
+  // Their friends list and their friends' posts, kept to friends: not for visitors.
+  await post_(api2, 'friends/settings', { listSeen: 'friends', postsSeen: 'friends' });
+  const plain = await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json();
+  eq([plain.buddies, plain.friendPosts, plain.friendsTab], [[], [], false], 'visitors see none of their friends');
+  const browser = await chromium.launch();
+  try {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
+    const p = await ctx.newPage();
+    p.errors = [];
+    p.on('pageerror', (e) => p.errors.push(e.message));
+    await p.addInitScript(() => sessionStorage.setItem('entered', '1'));
+    await p.goto(BASE + '/?owner=1#/');
+    const card = p.locator('.ff-in-home[data-friend-post$="|thoughts/pals-only"]');
+    await card.locator('.okit-visit').waitFor();
+    eq(await card.locator('.ff-open').count(), 0, 'no plain link to it (it isn’t there for visitors)');
+    const [tab] = await Promise.all([ctx.waitForEvent('page'), card.locator('.okit-visit').click()]);
+    tab.errors = [];
+    tab.on('pageerror', (e) => tab.errors.push(e.message));
+    await tab.waitForSelector('.visit-bar', { timeout: 20000 });
+    assert(tab.url().startsWith(BASE2) && !tab.url().includes('friend_pass') && !tab.url().includes('friendvisit'), 'their site, the pass gone from the address: ' + tab.url());
+    assert(/visiting as Lina’s friend/.test(await tab.locator('.visit-bar').innerText()), 'it says so');
+    await tab.waitForSelector('[data-post="thoughts/pals-only"]', { timeout: 15000 });
+    eq(await tab.evaluate(async () => (await fetch('/media/thoughts/pals-only/p.jpg')).status), 200, 'its photo too');
+    const cookie = (await ctx.cookies(BASE2)).find((c) => c.name === 'corner_friend');
+    assert(cookie?.httpOnly && cookie.sameSite === 'Lax', 'kept safely, for this site');
+    eq(await tab.evaluate(() => fetch('/api/all', { cache: 'no-cache' }).then((r) => r.headers.get('Cache-Control'))), 'private, no-store', 'never kept anywhere shared');
+    // What they keep for friends: their friends list, and the Friends tab.
+    const asFriend = await tab.evaluate(() => fetch('/api/all', { cache: 'no-cache' }).then((r) => r.json()));
+    assert(asFriend.buddies.some((b) => b.url === BASE) && asFriend.friendsTab === true, 'their friends, for you as their friend: ' + JSON.stringify([asFriend.buddies.length, asFriend.friendsTab]));
+    assert(asFriend.buddies.every((b) => !b.key), 'never the keys between their sites');
+    // A ♥ on it, as their friend.
+    await tab.locator('[data-post="thoughts/pals-only"] .react-btn[data-k="heart"]').first().click();
+    await until(async () => (await (await fetch(`${BASE2}/admin/api/overview`)).json()).posts.find((x) => x.slug === 'pals-only')?.reactions?.heart === 1, 'your ♥ on a post for friends');
+    // A pass is good once: the same address again, in another browser, is just a visitor.
+    const used = tab.url().replace(/[?#].*$/, '') + '?friend_pass=' + 'x'.repeat(43);
+    const other = await browser.newContext();
+    const o = await other.newPage();
+    await o.addInitScript(() => sessionStorage.setItem('entered', '1'));
+    await o.goto(used);
+    await o.waitForSelector('.feed');
+    eq(await o.locator('.visit-bar').count(), 0, 'a made-up pass: no visit');
+    eq(await o.locator('[data-post="thoughts/pals-only"]').count(), 0, 'nothing for friends');
+    await other.close();
+    // Stop: the cookie goes, and their site is as any visitor sees it.
+    await tab.locator('.visit-stop').click();
+    await tab.waitForFunction(() => !document.querySelector('.visit-bar') && document.querySelector('.feed'), null, { timeout: 20000 });
+    await tab.waitForTimeout(500);
+    eq(await tab.locator('[data-post="thoughts/pals-only"]').count(), 0, 'gone once you stop');
+    eq((await ctx.cookies(BASE2)).filter((c) => c.name === 'corner_friend').length, 0, 'and the cookie with it');
+    assert(!p.errors.length && !tab.errors.length, [...p.errors, ...tab.errors].join('; '));
+  } finally {
+    await browser.close();
+  }
+  await fetch(`${BASE2}/admin/api/file?key=thoughts/pals-only.md`, { method: 'DELETE' });
+  await post_(api2, 'friends/settings', { listSeen: 'me', postsSeen: 'me' });
+});
+
+await test('friends’ photos of the day: polaroids on a line at the top of Friends, the very ones their sites show', async () => {
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
+  for (const [n, f] of [[1, 0], [2, 1], [3, 2]]) await fetch(`${BASE2}/admin/api/upload?key=photos/day-${n}/a.jpg`, { method: 'PUT', body: fs.readFileSync(PHOTOS[f]) });
+  for (const n of [1, 2, 3]) await fetch(`${BASE2}/admin/api/file?key=photos/day-${n}.md`, { method: 'PUT', body: `---\ndate: ${at(n + 2)}\ntitle: Day ${n}\nphotos: [a.jpg]\n---\n` });
+  // Their site: today's photo, picked by the site itself.
+  const theirs = (await (await fetch(`${BASE2}/api/all?nocache=${Date.now()}`)).json()).photoOfDay;
+  assert(theirs?.src?.startsWith('/media/') && theirs.post, 'their site has one: ' + JSON.stringify(theirs));
+  // What their feed tells friends is the one their site shows friends today.
+  const feed = await (await signed(BASE2, 'GET', '/api/friends/feed', FAKE, secret)).json();
+  assert(feed.photo_day?.photo && `/media/${feed.photo_day.photo}` .length > 7, 'in their feed');
+  await post_(api, 'friends/refresh');
+  const lina = (await api('overview')).friendsMine.days.find((b) => b.url === BASE2);
+  eq(lina.photo_day.id, feed.photo_day.id, 'yours shows the same one');
+  eq((await fetch(BASE + lina.photo_day.src)).status, 200, 'and it loads, through your site');
+  // On your Friends tab, first of all: a polaroid pegged to the line.
+  const theme = await getFile('theme.md').catch(() => '');
+  const browser = await chromium.launch();
+  try {
+    const p = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    p.errors = [];
+    p.on('pageerror', (e) => p.errors.push(e.message));
+    await p.addInitScript(() => sessionStorage.setItem('entered', '1'));
+    await p.goto(BASE + '/?owner=1#/friends');
+    await p.waitForSelector('.pl .pl-pin');
+    eq(await p.evaluate(() => document.querySelector('.feed.ff').firstElementChild.className), 'pl', 'the very first thing');
+    eq((await p.locator('.pl-pin .pl-name').first().innerText()).trim(), 'Lina', 'with their name');
+    await p.waitForFunction(() => document.querySelector('.pl-pin img')?.naturalWidth > 0);
+    eq(await p.locator('.pl-charm').count(), 0, 'no drawings with the seasons off');
+    // The seasons on: the line dresses for winter.
+    await putFile('theme.md', '---\ntheme: classic\nseasons: winter\n---\n');
+    await p.reload();
+    await p.waitForSelector('.pl .pl-line.dressed');
+    eq(await p.locator('.pl-charm').count(), await p.locator('.pl-pin').count(), 'a winter drawing by each photo');
+    assert(!p.errors.length, p.errors.join('; '));
+  } finally {
+    await browser.close();
+    await putFile('theme.md', theme || '---\ntheme: classic\n---\n');
+  }
+  for (const n of [1, 2, 3]) await fetch(`${BASE2}/admin/api/file?key=photos/day-${n}.md`, { method: 'DELETE' });
 });
 
 await test('your site keeps its address, and friends follow when it moves', async () => {

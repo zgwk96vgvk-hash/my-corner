@@ -23,7 +23,7 @@
 //   export and visitors never see.
 
 import * as push from './push.js';
-import { safeMarkdown, buildPost, TYPES, THEME_OPTIONS, KEEPSAKE_SHAPES, THEMES, THEME_CHARMS } from './content.js';
+import { safeMarkdown, buildPost, photoOfDay, TYPES, THEME_OPTIONS, KEEPSAKE_SHAPES, THEMES, THEME_CHARMS } from './content.js';
 import { cleanCards, OWN_CARD, MIX, cleanMix, cleanSeed } from '../public/js/card-parts.js';
 
 const STORE = 'data/_friends.json';
@@ -108,18 +108,16 @@ export async function loadFriends(env) {
   } catch {}
   return {
     me: s.me || '',
-    // What your site's visitors see of your friends: their posts and your friends list ("all"),
-    // just the list ("list"), or nothing: only you see them, signed in ("off", unless you choose).
-    visibility: VISIBILITY.includes(s.visibility) ? s.visibility : s.showOnSite === true ? 'all' : 'off',
+    // Who sees your friends list (on About, and the buddies on Friends), and who sees their posts
+    // (the Friends tab and their photos of the day): "everyone", "friends" (your friends, visiting
+    // your site with Visit) or just "me", signed in. (Older sites said it in one: see fromOld.)
+    ...seenFrom(s),
     // Whether their posts are mixed into your Home feed while you're signed in (only you see that).
     inHome: s.inHome !== false,
     // Whether friends' sites may show your posts to their visitors (they always see them
     // themselves, signed in on their own site).
     letShare: s.letShare !== false,
     friends: Array.isArray(s.friends) ? s.friends : [],
-    // A webring on your About page (‹ previous · random · next ›, around you and your friends):
-    // only while visitors can see who your friends are.
-    webring: s.webring !== false,
     // Your friend code's secret (none while it's switched off).
     code: s.code && typeof s.code.secret === 'string' ? s.code : null,
     codeOff: !!s.codeOff,
@@ -131,6 +129,16 @@ export async function saveFriends(env, store) {
   await env.CONTENT.put(STORE, JSON.stringify(store));
 }
 export const VISIBILITY = ['all', 'list', 'off'];
+// Who may see something, widest first: everyone, your friends (visiting), or only you.
+export const SEEN = ['everyone', 'friends', 'me'];
+// (The older one setting: their posts and the list ("all"), just the list ("list"), or neither.)
+const fromOld = (v) => ({ listSeen: v === 'off' ? 'me' : 'everyone', postsSeen: v === 'all' ? 'everyone' : 'me' });
+function seenFrom(s) {
+  const old = fromOld(VISIBILITY.includes(s.visibility) ? s.visibility : s.showOnSite === true ? 'all' : 'off');
+  return { listSeen: SEEN.includes(s.listSeen) ? s.listSeen : old.listSeen, postsSeen: SEEN.includes(s.postsSeen) ? s.postsSeen : old.postsSeen };
+}
+// Whether someone sees what's kept to `level`: who is "everyone", "friends" or "me".
+const sees = (level, who) => SEEN.indexOf(level) <= SEEN.indexOf(who);
 // Your site's own address, as your friends know it: taken from the back office the first time,
 // then kept (opening the back office at another address doesn't change it; moving does).
 export async function rememberMe(env, origin) {
@@ -214,7 +222,20 @@ export async function friendsApi(request, env, path, deps) {
   // Your friend feed: who you are, how you are, and your recent posts.
   if (path === '/api/friends/feed' && method === 'GET') {
     const data = await deps.buildEverything(env, { forFriends: true });
-    return reply({ ...friendFeed(data, store.me || new URL(request.url).origin, friend), share: store.letShare });
+    // (And today's photo of the day, for their reel: the very one your own site shows friends today.)
+    const day = photoOfDay(data.posts, env.TIMEZONE || 'Europe/London');
+    let photo = '';
+    try {
+      photo = day ? decodeURIComponent(day.src.slice('/media/'.length)) : '';
+    } catch {}
+    return reply({ ...friendFeed(data, store.me || new URL(request.url).origin, friend), share: store.letShare, photo_day: photo ? { id: day.post, photo, cap: day.cap, friends_only: day.friends_only } : null });
+  }
+
+  // A friend about to visit your site in their browser: a one-time pass for it (see acceptPass).
+  if (path === '/api/friends/pass' && method === 'POST') {
+    const ticket = randomSecret();
+    await env.CONTENT.put(`${PASSES}${ticket}.json`, JSON.stringify({ k: friend.key, exp: Date.now() + PASS_TTL }), { httpMetadata: { contentType: 'application/json' } });
+    return reply({ ticket, ttl: PASS_TTL });
   }
 
   // They've moved: check they really are at the new address (their site there must answer,
@@ -521,6 +542,17 @@ function tidyReactions(r) {
   return { heart: n(r.heart), star: n(r.star), grin: n(r.grin), ...(Object.keys(custom).length ? { custom } : {}) };
 }
 
+// Where a post of theirs is on their site, from its name ("places/x" → "/#/journal/x").
+function postPath(id) {
+  const [type, slug] = String(id).split('/');
+  return type === 'places' ? `/#/journal/${slug}` : ['books', 'films', 'podcasts', 'music', 'tv'].includes(type) ? `/#/${type}/${slug}` : `/#/post/${type}/${slug}`;
+}
+// Their photo of the day (a photo of one of their posts, by its name, and its caption).
+function tidyDay(d) {
+  if (!d || typeof d !== 'object' || !photoKeyOk(d.photo) || !/^[a-z]+\/[^/\\]{1,100}$/.test(String(d.id || ''))) return null;
+  return { id: clean(d.id, 120), photo: d.photo, cap: clean(d.cap, 200), friends_only: d.friends_only === true };
+}
+
 // Tidies a feed from a friend's site before keeping it: plain values only, sizes capped.
 export function tidyFeed(f, friend) {
   const posts = (Array.isArray(f?.posts) ? f.posts : []).slice(0, 30).map((p) => ({
@@ -555,6 +587,8 @@ export function tidyFeed(f, friend) {
     status_updated: Number(f?.status_updated) || null,
     // (Whether they let you show their posts to your visitors.)
     share: f?.share !== false,
+    // (Their photo of the day, for your Friends reel.)
+    photo_day: tidyDay(f?.photo_day),
     // (Whether you can comment on their posts: a site new enough, with comments on.)
     comments_on: f?.comments_on === true,
     posts,
@@ -657,7 +691,7 @@ export async function friendsOverview(env, here = '') {
   );
   // Friends who still know you by an old address (they couldn't be told you moved).
   const behind = store.friends.filter((f) => f.as && f.as !== store.me).map((f) => f.name);
-  return { me: store.me, here, behind, visibility: store.visibility, letShare: store.letShare, inHome: store.inHome, webring: store.webring, friends, code: codeText(store), codeOff: store.codeOff };
+  return { me: store.me, here, behind, listSeen: store.listSeen, postsSeen: store.postsSeen, letShare: store.letShare, inHome: store.inHome, friends, code: codeText(store), codeOff: store.codeOff };
 }
 
 const codeText = (store) => (store.code && store.me ? 'MYCORNER-' + b64url(enc.encode(JSON.stringify({ u: store.me, s: store.code.secret }))) : null);
@@ -827,6 +861,81 @@ export async function addToAlbum(env, key, body) {
   return { ok: true };
 }
 
+// ---------- visiting a friend's site, as a friend ----------
+// Friendship is between the two sites, so a friend opening your site in their browser arrives
+// like any visitor. To see what's for friends there, they tap "Visit as a friend" on their own
+// site: it asks yours (signed) for a one-time pass, and their browser opens your site with it.
+// Your site swaps the pass for a cookie (in that browser, for this site only, signed, for a day),
+// and while it's good they see what your friends see. Visitors without one see the site as ever,
+// with no hint of anything more. Unfriending them ends it at once.
+const PASSES = 'data/_passes/';
+const PASS_TTL = 90 * 1000;
+const VISIT = 24 * 60 * 60 * 1000;
+const COOKIE = 'corner_friend';
+async function visitKey(env) {
+  const key = 'data/_friendvisits.json';
+  try {
+    const s = JSON.parse((await env.CONTENT.get(key).then((o) => o?.text())) || 'null');
+    if (s?.secret) return s.secret;
+  } catch {}
+  const secret = randomSecret();
+  await env.CONTENT.put(key, JSON.stringify({ secret }), { httpMetadata: { contentType: 'application/json' } });
+  return secret;
+}
+const cookieOf = (request) => /(?:^|;\s*)corner_friend=([\w.-]{20,400})/.exec(request.headers.get('Cookie') || '')?.[1] || '';
+// Arriving with a pass (?friend_pass=…): good once, for a minute and a half. Answers with the
+// page again, without the pass in its address, and the cookie set; or null (no pass, or no good).
+export async function acceptPass(request, env, url) {
+  const ticket = url.searchParams.get('friend_pass') || '';
+  const back = new URL(url);
+  back.searchParams.delete('friend_pass');
+  const away = (cookie) => new Response(null, { status: 303, headers: { Location: back.pathname + (back.search ? back.search + '&' : '?') + 'friendvisit=' + (cookie ? '1' : '0'), 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', ...(cookie ? { 'Set-Cookie': cookie } : {}) } });
+  if (!/^[\w-]{30,60}$/.test(ticket)) return away('');
+  const at = `${PASSES}${ticket}.json`;
+  let pass = null;
+  try {
+    pass = JSON.parse((await env.CONTENT.get(at).then((o) => o?.text())) || 'null');
+  } catch {}
+  await env.CONTENT.delete(at).catch(() => {});
+  const store = await loadFriends(env);
+  if (!pass || pass.exp < Date.now() || !store.friends.some((f) => f.key === pass.k)) return away('');
+  const body = b64url(enc.encode(JSON.stringify({ k: pass.k, exp: Date.now() + VISIT })));
+  const sig = b64url(await crypto.subtle.sign('HMAC', await hmacKey(await visitKey(env)), enc.encode(body)));
+  return away(`${COOKIE}=${body}.${sig}; Path=/; Max-Age=${VISIT / 1000}; HttpOnly; Secure; SameSite=Lax`);
+}
+// The friend visiting, from their cookie (only while it's good, and they're still a friend).
+export async function friendVisitor(request, env) {
+  const [body, sig] = cookieOf(request).split('.');
+  if (!body || !sig) return null;
+  try {
+    if (!(await crypto.subtle.verify('HMAC', await hmacKey(await visitKey(env)), fromB64url(sig), enc.encode(body)))) return null;
+    const v = JSON.parse(new TextDecoder().decode(fromB64url(body)));
+    if (!(v.exp > Date.now())) return null;
+    const store = await loadFriends(env);
+    const f = store.friends.find((x) => x.key === v.k);
+    return f ? { key: f.key, url: f.url, name: f.name, owner: f.owner, until: v.exp } : null;
+  } catch {
+    return null;
+  }
+}
+// Leaving: the cookie goes.
+export const leaveVisit = () => `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+// You, about to visit a friend's site: a pass from it, and where to go with it.
+export async function visitPass(env, key) {
+  const store = await loadFriends(env);
+  const friend = store.friends.find((f) => f.key === key);
+  if (!friend) throw new Error('That friend isn’t on your list any more.');
+  let res;
+  try {
+    res = await signedFetch(env, store, friend, 'POST', '/api/friends/pass', {});
+  } catch {
+    throw new Error('Couldn’t reach their site just now. Try again in a moment.');
+  }
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || !out.ticket) throw new Error(res.status === 404 || out.error === 'Not found' ? 'Their site needs its next update before you can visit as a friend (it updates itself overnight).' : out.error || 'Their site didn’t give a pass.');
+  return { url: `${friend.url}/?friend_pass=${encodeURIComponent(out.ticket)}` };
+}
+
 // ---------- notes between friends ("You've got mail!") ----------
 // A short note, sent by your site to a friend's, signed like everything else between them. It's
 // kept on their site for them alone (never on the site, never sent on), as a small file under
@@ -938,22 +1047,25 @@ export async function deleteNote(env, id) {
   return { ok: true };
 }
 
-// What visitors see of your friends, and whether your friends' sites may show your posts.
-// (showOnSite: true/false is the older way of saying "all" or "off".)
+// Who sees your friends list and their posts, and whether your friends' sites may show yours.
+// (visibility: "all", "list" or "off", and showOnSite: true/false, are the older ways of saying it.)
 export async function setFriendSettings(env, body) {
   const store = await loadFriends(env);
-  if (VISIBILITY.includes(body.visibility)) store.visibility = body.visibility;
-  else if (typeof body.showOnSite === 'boolean') store.visibility = body.showOnSite ? 'all' : 'off';
+  if (VISIBILITY.includes(body.visibility)) Object.assign(store, fromOld(body.visibility));
+  else if (typeof body.showOnSite === 'boolean') Object.assign(store, fromOld(body.showOnSite ? 'all' : 'off'));
+  if (SEEN.includes(body.listSeen)) store.listSeen = body.listSeen;
+  if (SEEN.includes(body.postsSeen)) store.postsSeen = body.postsSeen;
   if (typeof body.letShare === 'boolean') store.letShare = body.letShare;
   if (typeof body.inHome === 'boolean') store.inHome = body.inHome;
-  if (typeof body.webring === 'boolean') store.webring = body.webring;
   delete store.showOnSite;
+  delete store.visibility;
   await saveFriends(env, store);
   // (Friends' sites hear about a change to letShare at once: see shareNews.)
-  return { visibility: store.visibility, letShare: store.letShare, inHome: store.inHome, webring: store.webring };
+  return { listSeen: store.listSeen, postsSeen: store.postsSeen, letShare: store.letShare, inHome: store.inHome };
 }
-// A friend's posts can go on your site only if you show posts and they've said yes.
-const postsShown = (store, feed) => store.visibility === 'all' && feed?.share !== false;
+// A friend's posts can go in front of someone on your site only if you show them their posts and
+// the friend has said yes to being shown to visitors (your friends, visiting, are visitors too).
+const postsShown = (store, feed, who) => who === 'me' || (sees(store.postsSeen, who) && feed?.share !== false);
 
 // A photo from a friend's post, fetched by your site (so your browser never talks to theirs).
 export async function friendPhoto(env, key, photoKey) {
@@ -969,20 +1081,23 @@ export async function friendPhoto(env, key, photoKey) {
   return new Response(res.body, { headers: { 'Content-Type': type, 'Cache-Control': 'private, max-age=10800' } });
 }
 
-// For your site's visitors (if you show them): your buddies' names, presence and status, and
-// their latest posts as one feed, newest first. Their photos go through your own site (see
-// friendPhotoForVisitor), as the site only ever loads pictures from itself.
+// For your site's visitors, as far as you show them: your buddies' names, presence and status
+// (the list), and their latest posts as one feed, newest first, with each one's photo of the day
+// (`days`). Their photos go through your own site (see friendPhotoForVisitor), as the site only
+// ever loads pictures from itself. `viewer`: "everyone", or "friends" for a friend visiting.
 // `mine`: for you, signed in: everything, whoever else sees it, with friends-only posts and the
 // comments on each post (and whether you can add one).
-export async function publicFriends(env, { mine = false } = {}) {
+export async function publicFriends(env, { mine = false, viewer = 'everyone' } = {}) {
   const store = await loadFriends(env);
-  if ((store.visibility === 'off' && !mine) || !store.friends.length) return { buddies: [], posts: [], looks: {}, ring: [], postsShown: store.visibility === 'all', inHome: store.inHome, ...(mine ? { me: store.me } : {}) };
-  // The webring: you and your friends, in order of address (the same order on every site in it
-  // that's yours and your friends').
-  const ring = store.webring && store.visibility !== 'off' ? [...new Set([store.me, ...store.friends.map((f) => f.url)].filter(Boolean))].sort() : [];
+  const who = mine ? 'me' : viewer === 'friends' ? 'friends' : 'everyone';
+  const listShown = sees(store.listSeen, who);
+  const postsOk = sees(store.postsSeen, who);
+  const said = { postsShown: postsOk, inHome: store.inHome, ...(mine ? { me: store.me, listSeen: store.listSeen, postsSeen: store.postsSeen } : {}) };
+  if ((!listShown && !postsOk) || !store.friends.length) return { buddies: [], posts: [], days: [], looks: {}, ...said };
   const meToo = [store.me, ...store.friends.map((f) => f.as)].filter(Boolean);
   const caches = await Promise.all(store.friends.map((f) => readCache(env, f.key)));
   const buddies = [];
+  const days = [];
   const posts = [];
   const keepsakes = [];
   const categories = [];
@@ -992,14 +1107,18 @@ export async function publicFriends(env, { mine = false } = {}) {
     const c = caches[i];
     const feed = c?.feed;
     const fresh = c && c.ok !== false && Date.now() - (c.at || 0) < 3 * 60 * 60 * 1000;
-    const who = { name: feed?.name || f.name, owner: feed?.owner || f.owner, url: f.url, ...(mine ? { key: f.key, comments_on: !!feed?.comments_on } : {}) };
-    buddies.push({ ...who, presence: fresh ? feed?.presence || 'online' : 'offline', status: feed?.status || '' });
-    if (!mine && !postsShown(store, feed)) return;
+    const person = { name: feed?.name || f.name, owner: feed?.owner || f.owner, url: f.url, ...(mine ? { key: f.key, comments_on: !!feed?.comments_on } : {}) };
+    // (Their names, how they are and their status: only where the list is shown.)
+    if (listShown) buddies.push({ ...person, presence: fresh ? feed?.presence || 'online' : 'offline', status: feed?.status || '' });
+    if (!postsShown(store, feed, who)) return;
+    // Their photo of the day, for the line at the top of Friends (a friends-only one just for you).
+    const pd = feed?.photo_day;
+    if (pd && (mine || !pd.friends_only)) days.push({ ...person, photo_day: { src: `/friends-media/${encodeURIComponent(f.key)}/${pd.photo.split('/').map(encodeURIComponent).join('/')}`, cap: pd.cap, id: pd.id, url: f.url + postPath(pd.id), friends_only: pd.friends_only } });
     keepsakes.push(...(feed?.keepsakes || []));
     categories.push(...(feed?.categories || []));
     const look = feed?.cards_look ? `f${i}` : '';
     if (look) looks[look] = feed.cards_look;
-    const from = look ? { ...who, look } : who;
+    const from = look ? { ...person, look } : person;
     for (const p of feed?.posts || []) {
       // (Friends-only posts are for you, signed in: never on your site.)
       if (p.friends_only && !mine) continue;
@@ -1015,7 +1134,7 @@ export async function publicFriends(env, { mine = false } = {}) {
     }
   });
   posts.sort((a, b) => b.ts - a.ts);
-  return { buddies, posts: posts.slice(0, 60), keepsakes, categories, looks, ring, postsShown: store.visibility === 'all', inHome: store.inHome, ...(mine ? { me: store.me } : {}) };
+  return { buddies, days, posts: posts.slice(0, 60), keepsakes, categories, looks, ...said };
 }
 
 async function readCache(env, key) {
@@ -1028,15 +1147,18 @@ async function readCache(env, key) {
 }
 
 // A visitor's browser asking for a photo in your Friends feed: only photos of posts that are in
-// the feed you're showing, fetched from your friend's site by yours. (`mine`: you, signed in,
-// see the photos of every post of theirs you have.)
-export async function friendPhotoForVisitor(env, key, photoKey, mine = false) {
+// the feed you're showing them, fetched from your friend's site by yours. `who`: "everyone",
+// "friends" (a friend visiting) or "me" (you, signed in: the photos of every post of theirs).
+export async function friendPhotoForVisitor(env, key, photoKey, who = 'everyone') {
   const store = await loadFriends(env);
   const friend = store.friends.find((f) => f.key === key);
   const cached = friend ? (await readCache(env, key))?.feed : null;
-  const feed = mine || postsShown(store, cached) ? cached : null;
+  const mine = who === 'me';
+  const feed = postsShown(store, cached, SEEN.includes(who) ? who : 'everyone') ? cached : null;
   // (Not a friends-only post's: those are for you, signed in.)
-  if (!feed || !(feed.posts || []).some((p) => p.photos.includes(photoKey) && (mine || !p.friends_only))) return new Response('Not found', { status: 404 });
+  // (Their photo of the day too, which may be from an older post than the feed carries.)
+  const today = feed?.photo_day?.photo === photoKey && (mine || !feed.photo_day.friends_only);
+  if (!feed || !(today || (feed.posts || []).some((p) => p.photos.includes(photoKey) && (mine || !p.friends_only)))) return new Response('Not found', { status: 404 });
   return friendPhoto(env, key, photoKey);
 }
 

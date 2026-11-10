@@ -525,6 +525,19 @@ export function privacyOf(v) {
   return t === 'friends' || t === 'friends only' ? 'friends' : t === 'me' || t === 'only me' || t === 'private' ? 'me' : 'public';
 }
 
+// The photo of the day: one of the photos in these posts (newest first), a different one each
+// day by the site's own calendar, and the same for everyone who sees these posts that day, on
+// your site and in your friends' reels alike.
+export function photoOfDay(posts, tz, now = new Date()) {
+  const all = [];
+  for (const p of posts || []) (p.photos || []).forEach((src, i) => String(src).startsWith('/media/') && all.push({ p, src: String(src), cap: p.captions?.[i] || p.title || '' }));
+  if (all.length < 2) return null;
+  const day = Math.floor(Date.parse(`${todayIn(tz, now)}T00:00:00Z`) / 86400000);
+  // (Spread through the year, so neighbours on the list aren't neighbours in time.)
+  const pick = all[(day * 7919) % all.length];
+  return { post: `${pick.p.type}/${pick.p.slug}`, src: pick.src, cap: String(pick.cap).slice(0, 200), friends_only: !!pick.p.friends_only };
+}
+
 export function isVisible(post, now = Date.now()) {
   return !post.draft && !post.error && post.ts > 0 && post.ts <= now;
 }
@@ -616,6 +629,14 @@ export function parseWishlist(text) {
 
 const PRESENCE = ['online', 'away', 'brb', 'lunch', 'busy', 'offline'];
 
+// The small print at the foot of the About page (yours to change, or to switch off).
+export const ABOUT_NOTE = 'No trackers, no ads, no cookies. Your sound and wallpaper choices stay in your own browser.';
+function aboutNote(v) {
+  if (v == null || v === true) return ABOUT_NOTE;
+  const t = String(v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return v === false || /^(off|none|no|false)$/i.test(t) ? '' : t.slice(0, 300) || ABOUT_NOTE;
+}
+
 export function parseSite(text) {
   const { data, body } = splitFrontMatter(text || '');
   const day = /^\d{4}-\d{2}-\d{2}$/.exec(String(data.countdown_date ?? '').trim());
@@ -642,6 +663,8 @@ export function parseSite(text) {
     mood: /^[a-z]{2,16}$/.test(String(data.mood ?? '').trim()) ? String(data.mood).trim() : '',
     // Visitors can leave a ♥, a ☆ or a smile on posts (only how many is kept), unless switched off.
     reactions: !(data.reactions === false || /^(false|no|off)$/i.test(String(data.reactions ?? ''))),
+    // The small print at the foot of the About page ('' when switched off).
+    about_note: aboutNote(data.about_note),
     // Who sees your posts, all of them at once: public (everyone), friends, or me (only you).
     privacy: privacyOf(data.privacy),
     // While you're away: a status (and how you show) that switches itself on and off on the

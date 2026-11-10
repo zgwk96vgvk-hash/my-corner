@@ -302,7 +302,7 @@ const stampNow = () => {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 // The fields site.md can hold, kept as they are when only the status changes.
-const SITE_KEYS = ['name', 'owner', 'picture', 'status', 'presence', 'status_updated', 'mood', 'now_playing', 'countdown', 'countdown_date', 'countdown_icon', 'away_status', 'away_presence', 'away_from', 'away_to', 'tagline', 'comments', 'reactions', 'top_room', 'privacy'];
+const SITE_KEYS = ['name', 'owner', 'picture', 'status', 'presence', 'status_updated', 'mood', 'now_playing', 'countdown', 'countdown_date', 'countdown_icon', 'away_status', 'away_presence', 'away_from', 'away_to', 'tagline', 'comments', 'reactions', 'top_room', 'privacy', 'about_note'];
 // Changes one setting in site.md, keeping everything else as it is.
 async function setSiteField(key, value) {
   const siteRaw = await readFile('site.md');
@@ -1858,7 +1858,7 @@ const KEEPSAKES = [
   { types: ALL_SHARED, group: 'Stage & comedy', plain: true, noPrice: true, id: 'laughmeter', list: 'laughmeter', name: 'Laugh-o-meter', sub: 'how hard you laughed', label: 'the reading', first: '+ Add a line', ph: 'e.g. 9', hint: 'A number from 0 to 10 on the first line sets the needle; anything after is written underneath.' },
   { types: ALL_SHARED, group: 'Stage & comedy', plain: true, noPrice: true, id: 'joke', list: 'joke', name: 'Best line', sub: 'the joke you keep repeating', label: 'the joke', first: '+ Add a line', ph: 'e.g. In your own words', hint: 'The line you wanted to remember, in your own words.' },
   { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'flyer', list: 'flyer', name: 'Gig flyer', sub: 'the poster on the wall', label: 'on the flyer', first: '+ Add a line', ph: "e.g. The band's name", hint: 'The first line is the big name (or the place, if you leave it empty); the rest go underneath.' },
-  { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'tourtee', list: 'tourtee', name: 'Tour T-shirt', sub: 'the dates on the back', label: 'the dates', first: '+ Add a line', ph: 'e.g. Birmingham 20 Oct', hint: 'One date a line, like the back of a tour shirt; leave it empty and it lists this one.' },
+  { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'tourtee', list: 'tourtee', name: 'Tour T-shirt', sub: 'the dates on the back', label: 'the dates', first: '+ Add a line', ph: 'e.g. Bristol 20 Oct', hint: 'One date a line, like the back of a tour shirt; leave it empty and it lists this one.' },
   { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'earplugs', list: 'earplugs', name: 'Foam earplugs', sub: 'for the loud ones', label: 'written beside them', first: '+ Add a line', ph: 'e.g. Ears still ringing', hint: 'A squashed orange pair, with your words.' },
   { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'drumstick', list: 'drumstick', name: 'Drumstick', sub: 'thrown into the crowd', label: 'on the stick', first: '+ Add a line', ph: 'e.g. Caught it!', hint: 'A few words written along the stick.' },
   { types: ALL_SHARED, group: 'Concerts', plain: true, noPrice: true, id: 'buttonbadge', list: 'buttonbadge', name: 'Button badge', sub: 'pinned on your jacket', label: 'on the badge', first: '+ Add a line', ph: 'e.g. I was there', hint: 'A round pin badge; a few words on the first line, the place round the edge.' },
@@ -1896,7 +1896,7 @@ const KEEPSAKES = [
   { types: ALL_SHARED, group: 'Concerts', id: 'setlist', list: 'setlist', name: 'Setlist', sub: 'taped to the stage', label: 'the songs', first: '+ Add a song', ph: 'e.g. Song title', hint: 'One song a line, in the order played.', plain: true, noPrice: true },
   { types: ['books'], group: 'For a book', id: 'busticket', list: 'busticket', name: 'Bus ticket bookmark', sub: 'used to keep your place', label: 'on the ticket', first: '+ Add a line', ph: 'e.g. Number 50 into town', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
   { types: ['books'], group: 'For a book', id: 'coffeering', list: 'coffeering', name: 'Coffee ring', sub: 'a stain on the page', label: 'written by it', first: '+ Add a line', ph: 'e.g. Sorry, library', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
-  { types: ['books'], group: 'For a book', id: 'signature', list: 'signature', name: 'Signed card', sub: 'from the author', label: 'who it\'s to', first: '+ Add a line', ph: 'e.g. Sebastian', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
+  { types: ['books'], group: 'For a book', id: 'signature', list: 'signature', name: 'Signed card', sub: 'from the author', label: 'who it\'s to', first: '+ Add a line', ph: 'e.g. Sam', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
   { types: ['books'], group: 'For a book', id: 'bookclub', list: 'bookclub', name: 'Book club invite', sub: 'next month we\'re reading…', label: 'on the invite', first: '+ Add a line', ph: 'e.g. At Sam\'s, bring wine', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
   { types: ['books'], group: 'For a book', id: 'dogear', list: 'dogear', name: 'Dog-eared page', sub: 'where you got to', label: 'the page', first: '+ Add a line', ph: 'e.g. 214', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
   { types: ['films'], group: 'For the screen', id: 'stubpair', list: 'stubpair', name: 'Ticket stubs for two', sub: 'stuck together', label: 'on the stubs', first: '+ Add a line', ph: 'e.g. With Sam', hint: 'Leave it empty and it makes something up.', plain: true, noPrice: true },
@@ -2022,7 +2022,7 @@ const KEEPSAKES = [
   { types: ['thoughts', 'photos'], group: 'Home & cosy', plain: true, noPrice: true, id: 'doormat', list: 'doormat', name: 'Doormat', sub: 'a word at the door', label: 'the word', first: '+ Add a line', ph: 'e.g. Welcome', hint: 'The first line goes on the mat.' },
   { types: ['thoughts', 'photos'], group: 'Home & cosy', plain: true, noPrice: true, id: 'jamjar', list: 'jamjar', name: 'Jam jar', sub: 'homemade', label: 'what’s in it', first: '+ Add a line', ph: 'e.g. Strawberry', hint: 'The first line goes on the label (with the month you made it).' },
   { types: ['thoughts', 'photos'], group: 'Home & cosy', plain: true, noPrice: true, id: 'fridgenote', list: 'fridgenote', name: 'Note on the fridge', sub: 'held by a magnet', label: 'the note', first: '+ Add a line', ph: 'e.g. milk, eggs', hint: 'Each line in your handwriting.' },
-  { types: ['places', 'photos'], group: 'Travel & transport', plain: true, noPrice: true, id: 'trainticket', list: 'trainticket', name: 'Train ticket', sub: 'from and to', label: 'from, then to', first: '+ Add a line', ph: 'e.g. Birmingham', hint: 'The first line is where from, the second where to (or the place).' },
+  { types: ['places', 'photos'], group: 'Travel & transport', plain: true, noPrice: true, id: 'trainticket', list: 'trainticket', name: 'Train ticket', sub: 'from and to', label: 'from, then to', first: '+ Add a line', ph: 'e.g. Bristol', hint: 'The first line is where from, the second where to (or the place).' },
   { types: ['places', 'photos'], group: 'Travel & transport', plain: true, noPrice: true, id: 'ferrypass', list: 'ferrypass', name: 'Ferry pass', sub: 'across the water', label: 'where to', first: '+ Add a line', ph: 'e.g. The islands', hint: 'The first line is where you crossed to.' },
   { types: ['places', 'photos'], group: 'Travel & transport', plain: true, noPrice: true, id: 'travelpin', list: 'travelpin', name: 'Map pin', sub: 'with a paper flag', label: 'on the flag', first: '+ Add a line', ph: 'e.g. Here!', hint: 'The first line goes on the flag (or the place).' },
   { types: ['places', 'photos'], group: 'Travel & transport', plain: true, noPrice: true, id: 'passportstamp', list: 'passportstamp', name: 'Passport stamp', sub: 'in ink', label: 'the place', first: '+ Add a line', ph: 'e.g. Lisbon', hint: 'The first line is stamped with the day (just the place, nothing official).' },
@@ -2890,9 +2890,9 @@ function placePicker(s, rerender) {
     });
   }
 
-  const area = h('input', { class: 'input', value: s.area, placeholder: 'Digbeth, Birmingham' });
+  const area = h('input', { class: 'input', value: s.area, placeholder: 'Stokes Croft, Bristol' });
   area.addEventListener('input', () => (s.area = area.value));
-  const city = h('input', { class: 'input', value: s.city, placeholder: 'Birmingham' });
+  const city = h('input', { class: 'input', value: s.city, placeholder: 'Bristol' });
   city.addEventListener('input', () => (s.city = city.value));
   const weather = h('input', { class: 'input grow', value: s.weather, placeholder: '12°C, light rain' });
   weather.addEventListener('input', () => (s.weather = weather.value));
@@ -3292,6 +3292,12 @@ function viewSite(part = 'site') {
     };
     const about = h('textarea', { class: 'textarea' });
     about.value = splitFM(siteRaw).body.trim();
+    // The small print at the foot of the About page: the usual words, your own, or none.
+    const USUAL_NOTE = 'No trackers, no ads, no cookies. Your sound and wallpaper choices stay in your own browser.';
+    const noteRaw = raw('about_note');
+    const note = h('textarea', { class: 'textarea short about-note-in', maxlength: 300, placeholder: 'Empty: no small print at all' });
+    note.value = /^(off|none|no|false)$/i.test(noteRaw) ? '' : noteRaw || USUAL_NOTE;
+    const noteUsual = h('button', { type: 'button', class: 'btn small', onclick: () => (note.value = USUAL_NOTE) }, 'Use the usual words');
 
     // ----- status -----
     const statusIn = h('input', { class: 'input', value: st.status, maxlength: 140, placeholder: 'What are you up to? (book) and :) work here' });
@@ -3408,6 +3414,8 @@ function viewSite(part = 'site') {
           countdown_date: cdLabel.value.trim() && cdDate.value ? cdDate.value : '',
           countdown_icon: cdLabel.value.trim() && cdDate.value ? cdIcon.value : '',
           tagline: inputs.tagline.value.trim(),
+          // (Empty: none at all; the usual words: nothing saved, so they stay the usual ones.)
+          about_note: !note.value.trim() ? 'off' : note.value.trim().replace(/\s+/g, ' ') === USUAL_NOTE ? '' : note.value.trim().replace(/\s+/g, ' '),
           // (Kept as they are: switched in the Comments tab.)
           comments: data.site?.comments === false ? 'off' : '',
           reactions: data.site?.reactions === false ? 'off' : '',
@@ -3495,7 +3503,7 @@ function viewSite(part = 'site') {
         h('div', { class: 'row end' }, h('button', { type: 'button', class: 'btn go', onclick: async (e) => { try { await putFile('status-log.md', logBox.value.trim() + '\n'); logRaw = logBox.value.trim(); toast('Past statuses saved.'); await refresh(); } catch (err) { toast(err.message, true); } } }, 'Save past statuses'))
       ),
       pictureChooser(),
-      h('fieldset', { class: 'group' }, h('legend', null, 'About the site'), field('Site name', inputs.name, 'Shown on the welcome screen, every title bar, the tab and the home-screen app.'), field('Your name', inputs.owner), field('Tagline', inputs.tagline, 'Shown on the welcome screen.'), field('About you', about, 'Markdown works here too.'), h('div', { class: 'row end' }, saveSite)),
+      h('fieldset', { class: 'group' }, h('legend', null, 'About the site'), field('Site name', inputs.name, 'Shown on the welcome screen, every title bar, the tab and the home-screen app.'), field('Your name', inputs.owner), field('Tagline', inputs.tagline, 'Shown on the welcome screen.'), field('About you', about, 'Markdown works here too.'), field('Small print', h('div', null, note, h('div', { class: 'row' }, noteUsual)), 'The line at the foot of your About page. Leave it empty for none at all.'), h('div', { class: 'row end' }, saveSite)),
       categoryManager(),
       topRoomControls(),
       h('fieldset', { class: 'group' }, h('legend', null, 'Wishlist'), h('p', { class: 'hint' }, 'One place per line: "- [ ] Name, City (food) — note". Change [ ] to [x] once you have been.'), wish, h('div', { class: 'row end' }, saveWish))
@@ -4375,6 +4383,8 @@ export const kit = {
   post: (key) => data?.posts.find((x) => x.key === key) || null,
   togglePin: (p) => togglePin(p),
   toggleFlag: (p, flag, msg) => toggleFlag(p, flag, msg),
+  // A pass for visiting a friend's site as their friend (and where to go with it).
+  visitFriend: (friend) => api('friends/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friend }) }),
   // A reaction on a friend's post (or taken back): their site's new counts come back.
   reactToFriend: (friend, post, ask) => api('friends/react', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friend, post, ...ask }) }),
   // A photo of yours for a friend's shared album: made small (and plain: nothing hidden in it),

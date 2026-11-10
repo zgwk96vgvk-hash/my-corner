@@ -259,8 +259,16 @@ await test('every level: fonts, feed, header, menu, taskbar, icons and sounds', 
     eq(bar.y, 0, 'taskbar at the top');
     eq(await p.locator('.taskbar .clock').isVisible(), false, 'no clock');
     eq(await p.locator('.desk-icon', { hasText: 'Wishlist' }).count(), 0, 'no wishlist icon');
-    assert(await p.evaluate(() => !!document.getElementById('real-grain') && getComputedStyle(document.querySelector('.card')).filter.includes('real-grain')), 'extra real on a computer: the cards have grain');
+    // (No card drawn through a filter: some browsers skipped drawing them now and then, leaving gaps.)
+    assert(await p.evaluate(() => getComputedStyle(document.body, '::after').backgroundImage.includes('grain.png') && !document.getElementById('real-grain') && [...document.querySelectorAll('.card, .profile-tile, .ticket-wrap')].every((c) => !getComputedStyle(c).filter.includes('url('))), 'extra real on a computer: grain over the screen, none drawn card by card');
+    assert(await p.evaluate(() => getComputedStyle(document.querySelector('.card')).boxShadow !== 'none'), 'the cards still stand off the page');
+    // (The flight log's pass is laid out as its own, not as the journal's boarding-pass keepsake.)
+    eq(await p.evaluate(async () => { await Promise.all([...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.sheet || new Promise((r) => l.addEventListener('load', r)))); const d = document.createElement('div'); d.className = 'boarding-pass'; document.body.append(d); const v = getComputedStyle(d).display; d.remove(); return v; }), 'block', 'the flight log keeps its own layout on a computer');
     eq((await fetch(BASE + '/img/grain.png')).status, 200, 'the grain itself');
+    // (Paper and leather are ready-made pictures, not noise worked out by the browser at each drawing.)
+    const paper = await fetch(BASE + '/img/tex/paper-grain.webp');
+    eq([paper.status, paper.headers.get('Content-Type'), /max-age=\d{6,}/.test(paper.headers.get('Cache-Control') || '')], [200, 'image/webp', true], 'the paper’s grain, kept by the browser');
+    assert(!/feTurbulence/.test(await (await fetch(BASE + '/css/leather.css')).text()), 'no noise filters in the journal’s styles');
   }, { desktop: true });
 });
 
@@ -541,6 +549,25 @@ await test('seasons and festive days: picked by hand, or automatic by the date',
   await putFile('theme.md', '---\ntheme: classic\n---\n');
 });
 
+await test('an after-dark theme is said plainly beside Save, can be seen, and switched off', async () => {
+  await putFile('theme.md', '---\ntheme: paper\nnight_theme: cherry\n---\n');
+  const page = await adminPage();
+  await openTab(page, 'Themes');
+  await page.waitForSelector('.tm-night-note');
+  assert(/After dark \(7pm to 7am\) your site changes into Cherry Soda/.test(await page.locator('.tm-night-note').innerText()), 'said plainly: ' + (await page.locator('.tm-night-note').innerText()));
+  const now = new Date().getHours();
+  assert((await page.locator('.tm-night-note').innerText()).includes(now >= 19 || now < 7 ? 'This is that look.' : 'This is the daytime look.'), 'the preview starts as the site looks right now');
+  await page.locator('.tm-night-note button', { hasText: /See (after dark|daytime)/ }).click();
+  await page.locator('.tm-night-note button', { hasText: 'No night theme' }).click();
+  eq(await page.locator('.tm-night-note').count(), 0, 'gone');
+  await page.locator('button', { hasText: 'Save the theme' }).click();
+  await page.waitForFunction(() => /on your site now/.test(document.querySelector('.toast')?.textContent || ''));
+  eq((await publicData()).theme.night_theme, undefined, 'saved without it');
+  assert(!page.errors.length, page.errors.join('; '));
+  await page.close();
+  await putFile('theme.md', '---\ntheme: classic\n---\n');
+});
+
 await test('Surprise me remixes every part, optional extras too, but keeps your menu and words', async () => {
   await putFile('theme.md', '---\ntheme: classic\nmenu: ["home", "music"]\nlabels: {"music": "Tunes"}\n---\n');
   const page = await adminPage();
@@ -561,7 +588,10 @@ await test('Surprise me remixes every part, optional extras too, but keeps your 
     eq([last.menu, last.labels], [['home', 'music'], { music: 'Tunes' }], 'your menu and words stay');
   }
   assert(mains.size > 25, 'new colours every time');
-  const every = ['main', 'accent', 'paper', 'wallpaper', 'decoration', 'pointer', 'font', 'title_font', 'selector', 'bars', 'corners', 'density', 'name_style', 'sounds', 'apps', 'stickers', 'glass', 'floppy', 'seasons', 'tab_icon', 'night_theme', 'trail', 'falling'];
+  // (Never a night theme, though: a site that changes at 7pm by surprise looks like a theme that
+  // didn't save.)
+  assert(!seen.has('night_theme'), 'no night theme by surprise');
+  const every = ['main', 'accent', 'paper', 'wallpaper', 'decoration', 'pointer', 'font', 'title_font', 'selector', 'bars', 'corners', 'density', 'name_style', 'sounds', 'apps', 'stickers', 'glass', 'floppy', 'seasons', 'tab_icon', 'trail', 'falling'];
   const missing = every.filter((k) => !seen.has(k));
   assert(missing.length <= 2, 'every part comes up across the remixes, missing: ' + missing.join(', '));
   await page.locator('button', { hasText: 'Save the theme' }).click();

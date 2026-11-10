@@ -103,7 +103,7 @@ function merge(d, fromSite = false) {
   // not to) their posts in your Home.
   const fm = owner.friendsMine;
   if (fm) {
-    Object.assign(d, { buddies: fm.buddies || [], friendPosts: fm.posts || [], friendLooks: fm.looks || {}, friendKeepsakes: fm.keepsakes || [], friendCategories: fm.categories || [], friendsTab: true, friendsInHome: fm.inHome === false ? [] : fm.posts || [] });
+    Object.assign(d, { buddies: fm.buddies || [], friendDays: fm.days || [], friendPosts: fm.posts || [], friendLooks: fm.looks || {}, friendKeepsakes: fm.keepsakes || [], friendCategories: fm.categories || [], friendsTab: true, friendsInHome: fm.inHome === false ? [] : fm.posts || [] });
     registerCategories(d.friendCategories);
     registerKeepsakes([...(d.keepsakes?.custom || []), ...d.friendKeepsakes]);
   }
@@ -388,7 +388,7 @@ const CP = [
   ['Writing', [['posts', 'Posts & drafts', 'Every post, drafts and scheduled ones included: find, pin, edit', '🗂'], ['highlights', 'Highlights', 'The cabinet’s shelves, in order, with why', '★'], ['planner', 'Planner', 'Your lists, private ones too', '📒'], ['email', 'Post by email', 'Email your site, and it’s a post (photos too)', '📧']]],
   ['People', [['notifications', 'Inbox', 'Comments, signatures, suggestions, nudges, friends’ news', '✉'], ['friends', 'Friends', 'Your buddies, and who sees what', '👥'], ['mail', 'Mail', 'Notes from friends, and ones you’ve sent', '📨'], ['notify', 'Notifications', 'On your phone or computer, even with the site closed', '🔔'], ['status', 'Status', 'How you are, your message, a countdown', '💬']]],
   ['Look', [['themes', 'Themes', 'Colours, wallpaper, fonts and the rest, on your real site as you choose', '🎨'], ['designs', 'Designs', 'The visa in your passport, and keepsakes of your own', '🎟']]],
-  ['Your site', [['privacy', 'Privacy', 'Who sees your posts: everyone, friends or only you', '🔒'], ['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['visitors', 'Visitors', 'How many, and which countries they come from', '🌍'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
+  ['Your site', [['privacy', 'Privacy', 'Who sees your posts: everyone, friends or only you', '🔒'], ['picture', 'Your picture', 'A photo of you, or one of the site’s own pictures', '🖼'], ['site', 'Site & wishlist', 'Its name, about you, the small print, place categories, the trips wishlist', '🏠'], ['travel', 'Travel stats', 'The flight log in your passport', '✈'], ['visitors', 'Visitors', 'How many, and which countries they come from', '🌍'], ['files', 'Export & files', 'Download everything, import, all your files', '💾']]]
 ];
 const CP_NAME = Object.fromEntries(CP.flatMap(([, items]) => items.map(([id, name]) => [id, name])));
 CP_NAME.comments = 'Comments';
@@ -1145,7 +1145,33 @@ function decorateFriendPosts() {
     // A ♥, a ☆, a smile or any emoji, as on your own posts: it goes to their site.
     const reacts = reactionRow(p, null, 'ff-react', { key: `react:friend:${key}|${id}`, send: (ask) => kit.reactToFriend(key, id, ask) });
     if (reacts) el.append(reacts);
+    // Their own site, as their friend: everything that's for friends, not just what visitors see.
+    // (In place of the plain link, which only shows what any visitor sees.)
+    el.querySelector(':scope > .ff-open, .ff-open')?.remove();
+    const whose = f?.owner ? f.owner.split(/\s+/)[0] + '’s site' : 'their site';
+    const visit = btn('Visit ↗', 'okit-visit', () => visitFriend(key, p.url), { title: `Visit ${whose} as a friend`, 'aria-label': `Visit ${whose} as a friend` });
+    el.append(h('div', { class: 'okit-visit-row' }, visit));
     el.append(h('div', { class: 'okit-talk-wrap' }, h('div', { class: 'okit-row' }, toggle, note, add), panel));
+  }
+}
+// Off to a friend's site as their friend: a pass from it (asked for by your site, signed), then
+// their site in a new tab, at the post. (The tab is opened straight away, so it isn't blocked.)
+async function visitFriend(key, where = '') {
+  const tab = window.open('', '_blank');
+  try {
+    if (tab) tab.opener = null;
+  } catch {}
+  try {
+    const { url } = await kit.visitFriend(key);
+    let hash = '';
+    try {
+      hash = new URL(where).hash;
+    } catch {}
+    if (tab) tab.location.href = url + hash;
+    else location.href = url + hash;
+  } catch (e) {
+    tab?.close();
+    toast(e.message, true);
   }
 }
 // "📷 Add photos" on a friend's shared album: pick a few, and each goes to their site in turn.
@@ -1179,8 +1205,11 @@ function decorateFriendsTab() {
   const feed = document.querySelector('.feed.ff:not([data-okit])');
   if (!feed) return;
   feed.dataset.okit = '1';
-  const everyone = owner.friendsMine?.postsShown;
-  feed.prepend(h('div', { class: 'okit-note' }, h('span', null, everyone ? '👁 Everyone can see this tab and your friends’ posts on it.' : '🔒 Only you can see this tab: your visitors don’t see your friends’ posts.'), btn('Change', '', () => controlPanel('friends'))));
+  const seen = owner.friendsMine?.postsSeen || 'me';
+  const say = { everyone: '👁 Everyone can see this tab and your friends’ posts on it.', friends: '👥 Your friends can see this tab when they visit your site. Other visitors don’t see your friends’ posts.', me: '🔒 Only you can see this tab: your visitors don’t see your friends’ posts.' };
+  // (After the photos-of-the-day line, which always comes first.)
+  const line = feed.querySelector(':scope > .pl');
+  (line ? (n) => line.after(n) : (n) => feed.prepend(n))(h('div', { class: 'okit-note' }, h('span', null, say[seen] || say.me), btn('Change', '', () => controlPanel('friends'))));
 }
 // A dot on Friends, wherever it's shown (the menus, the desktop, the dock), while there are
 // posts you haven't seen yet. Opening Friends clears it.
@@ -1790,6 +1819,8 @@ export async function startOwner(s) {
   }
   document.documentElement.classList.add('owner-on');
   ownerHooks.holding = () => writing();
+  // (A friend's site as their friend, from anywhere on yours: the photos-of-the-day line, say.)
+  ownerHooks.visitFriend = visitFriend;
   ownerHooks.trying = () => trying;
   // (An emoji left on one of your posts that you don't want: × takes it off.)
   ownerHooks.removeReaction = async (p, emoji) => {

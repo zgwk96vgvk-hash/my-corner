@@ -4,7 +4,7 @@
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 import { stripImage, UnsupportedImage, CLEAN_TYPES } from './strip.js';
 import { parseVisited } from './content.js';
-import { TYPES, buildPost, isVisible, postLevel, siteLevel, privacyOf, PRIVACY, todayIn, parseFortunes, POSTCARD_FRONTS, parseWishlist, parseSite, parseStatusLog, parseCategories, parseTravel, parsePassport, parseKeepsakeSettings, parseTheme, parseHighlights, parseHighlightsPast, parsePlanner, parseGuestbookEntry, parseComment, isCommentKey, splitFrontMatter, headerProblem } from './content.js';
+import { TYPES, buildPost, isVisible, photoOfDay, postLevel, siteLevel, privacyOf, PRIVACY, todayIn, parseFortunes, POSTCARD_FRONTS, parseWishlist, parseSite, parseStatusLog, parseCategories, parseTravel, parsePassport, parseKeepsakeSettings, parseTheme, parseHighlights, parseHighlightsPast, parsePlanner, parseGuestbookEntry, parseComment, isCommentKey, splitFrontMatter, headerProblem } from './content.js';
 import { adminCheck } from './auth.js';
 import { VERSION } from './version.js';
 import * as friends from './friends.js';
@@ -117,6 +117,10 @@ async function route(request, env, ctx) {
   const moved = await mainAddress(request, env, url);
   if (moved) return moved;
   if (p === '/manifest.webmanifest') return manifest(env);
+  // A friend arriving with a pass from their own site (see friends.acceptPass).
+  if (method === 'GET' && p === '/' && url.searchParams.has('friend_pass')) return friends.acceptPass(request, env, url);
+  // A friend's visit ended (their cookie goes), and whether one is going on.
+  if (p === '/api/visiting/leave' && method === 'POST') return json({ ok: true }, 200, { 'Set-Cookie': friends.leaveVisit() });
   // The site's own scripts and styles, under this deploy's id (see deployId below).
   const pinned = PINNED.exec(p);
   if (pinned) return pinnedFile(request, env, url, pinned[1], pinned[2]);
@@ -184,7 +188,9 @@ async function route(request, env, ctx) {
     // (Signed in, you see the photos of every post of theirs you have, friends-only ones too.)
     // (Only a browser's own request is checked: a sign-in only ever arrives with one.)
     const mine = (request.headers.has('Cookie') || request.headers.get('Sec-Fetch-Site') === 'same-origin') && (await adminCheck(request, env)).ok;
-    return friends.friendPhotoForVisitor(env, parts[0], parts.slice(1).join('/'), mine);
+    // (A friend visiting sees the photos of what you show your friends.)
+    const who = mine ? 'me' : (await visitingFriend(request, env)) ? 'friends' : 'everyone';
+    return friends.friendPhotoForVisitor(env, parts[0], parts.slice(1).join('/'), who);
   }
   // Friends' sites talking to yours (every request signed with the secret you share).
   if (p.startsWith('/api/friends/')) return friends.friendsApi(request, env, p, { buildEverything, mediaForFriend: (key) => friendMedia(env, key), friendComment: (who, info) => friendComment(env, who, info, ctx, url.origin), albumPhoto: (who, info) => albumPhoto(env, who, info), react: (info) => giveReaction(env, info, { forFriends: true }), changed: () => bumpVersion(env), news: () => friends.shareNews(env, buildEverything), waitUntil: (work) => ctx.waitUntil(work) });
@@ -195,7 +201,7 @@ async function route(request, env, ctx) {
 
 // Fonts, the map and photo libraries, icons and cursors hardly ever change, so browsers keep
 // them for a month instead of asking again on every visit. (Change one? Give it a new name.)
-const LONG_LIVED = /^\/(fonts|vendor|icons|cursors)\//;
+const LONG_LIVED = /^\/(fonts|vendor|icons|cursors|img\/tex)\//;
 async function staticFile(request, env, path) {
   const page = path === '/' || path.endsWith('.html');
   const res = await env.ASSETS.fetch(page ? unconditional(request) : request);
@@ -879,7 +885,8 @@ async function react(request, env) {
   } catch {
     return json({ error: 'Could not read that.' }, 400);
   }
-  const out = await giveReaction(env, body);
+  // (A friend visiting with a pass may react to what's for friends too.)
+  const out = await giveReaction(env, body, { forFriends: await visitingFriend(request, env) });
   return json(out.body, out.status || 200);
 }
 // A reaction given (or taken back): from a visitor, or (`forFriends`) a friend on their own site,
@@ -952,7 +959,50 @@ function travelFor(stats, includeHidden) {
   return stats;
 }
 
+// What goes to a browser, from what the site has: the finished HTML (the raw Markdown and file
+// names stay for the back office), your friends as visitors may see them, and so on.
+// `viewer`: "everyone", or "friends" for a friend visiting with a pass.
+async function dressForVisitors(env, data, viewer = 'everyone') {
+  // Visitors get the finished HTML; the raw Markdown and file names stay for the back office.
+  // Your friends: who they are and how they are (your friends list), and their latest posts,
+  // each as far as you've chosen to show them to this viewer (otherwise just for you, signed in).
+  const pals = await friends.publicFriends(env, { viewer }).catch(() => ({ buddies: [], posts: [], days: [] }));
+  // (Who a post is with shows only while visitors can see who your friends are; who may add to
+  // an album never does.)
+  const shown = new Set(pals.buddies.map((b) => b.url));
+  data.posts = data.posts.map(({ body, files, key, album_with, ...p }) => ({ ...p, with: (p.with || []).filter((u) => shown.has(u)) }));
+  // (Whether posts are kept from visitors is never said: to them, a private site is just one
+  // with nothing posted yet.)
+  data.site = (({ privacy, ...rest }) => rest)(data.site);
+  data.buddies = pals.buddies;
+  data.friendDays = pals.days || [];
+  data.friendPosts = pals.posts;
+  data.friendLooks = pals.looks || {};
+  // (Their keepsake designs and place categories, for drawing their posts as on their site.)
+  data.friendKeepsakes = pals.keepsakes || [];
+  data.friendCategories = pals.categories || [];
+  // (No Friends tab when you don't show this viewer friends' posts; the friends list, if shown to
+  // them, is on About.)
+  data.friendsTab = !!pals.postsShown;
+  // (Whether visitors can ask to hear when you post.)
+  data.notifyPosts = (await push.settings(env).catch(() => ({}))).visitors === true;
+  // (Today's photo of the day, from what this browser may see.)
+  const day = photoOfDay(data.posts, tzOffset(env));
+  data.photoOfDay = day ? { post: day.post, src: day.src, cap: day.cap } : null;
+  return data;
+}
+
 async function apiAll(request, env, ctx) {
+  // A friend visiting (with a pass from their own site): what's for friends, just for them, never
+  // kept in any shared cache.
+  if ((request.headers.get('Cookie') || '').includes('corner_friend=')) {
+    const pal = await friends.friendVisitor(request, env);
+    if (pal) {
+      const data = await dressForVisitors(env, await buildEverything(env, { forFriends: true }), 'friends');
+      data.friendVisit = { as: pal.owner || pal.name, site: pal.url, until: pal.until };
+      return json(data, 200, { 'Cache-Control': 'private, no-store', 'X-Friend-Visit': '1', Vary: 'Cookie' });
+    }
+  }
   const version = (await readText(env, 'data/_version')) || '0';
   // Rebuilt every 5 minutes as well, so posts scheduled for later appear on time.
   const slot = Math.floor(Date.now() / 300000);
@@ -973,29 +1023,7 @@ async function apiAll(request, env, ctx) {
   if (!res) {
     const data = await buildEverything(env);
     partial = data.inside.partial;
-    // Visitors get the finished HTML; the raw Markdown and file names stay for the back office.
-    // Your friends: who they are and how they are, and their latest posts (only if you've chosen
-    // to show them to everyone: otherwise they're just for you, signed in).
-    const pals = await friends.publicFriends(env).catch(() => ({ buddies: [], posts: [] }));
-    // (Who a post is with shows only while visitors can see who your friends are; who may add to
-    // an album never does.)
-    const shown = new Set(pals.buddies.map((b) => b.url));
-    data.posts = data.posts.map(({ body, files, key, album_with, ...p }) => ({ ...p, with: (p.with || []).filter((u) => shown.has(u)) }));
-    // (Whether posts are kept from visitors is never said: to them, a private site is just one
-    // with nothing posted yet.)
-    data.site = (({ privacy, ...rest }) => rest)(data.site);
-    // (The webring: you and your friends, if you have it on.)
-    data.webring = pals.ring?.length > 1 ? pals.ring : [];
-    data.buddies = pals.buddies;
-    data.friendPosts = pals.posts;
-    data.friendLooks = pals.looks || {};
-    // (Their keepsake designs and place categories, for drawing their posts as on their site.)
-    data.friendKeepsakes = pals.keepsakes || [];
-    data.friendCategories = pals.categories || [];
-    // (No Friends tab when you don't show friends' posts; the friends list, if shown, is on About.)
-    data.friendsTab = !!pals.postsShown;
-    // (Whether visitors can ask to hear when you post.)
-    data.notifyPosts = (await push.settings(env).catch(() => ({}))).visitors === true;
+    await dressForVisitors(env, data);
     res = json(data, 200, { 'Cache-Control': 'public, max-age=300' });
     if (!partial) ctx.waitUntil(cache.put(cacheKey, res.clone()).catch(() => {}));
   }
@@ -1017,8 +1045,18 @@ async function media(request, env, path) {
   // only, only you, a draft, not out yet) keeps its photos to you, signed in. (Your friends'
   // sites get theirs another way: see friendMedia.)
   const [type, slug] = key.split('/');
-  if (type && slug && (await hiddenPost(env, type, slug)) && !(await adminCheck(request, env)).ok) return new Response('Not found', { status: 404 });
+  if (type && slug && (await hiddenPost(env, type, slug)) && !(await adminCheck(request, env)).ok && !(await friendMaySee(request, env, type, slug))) return new Response('Not found', { status: 404 });
   return mediaFor(env, key, request.method === 'HEAD', request.headers.get('If-None-Match'));
+}
+// Whether this browser is a friend's, visiting with a pass (see friends.acceptPass).
+async function visitingFriend(request, env) {
+  return (request.headers.get('Cookie') || '').includes('corner_friend=') && !!(await friends.friendVisitor(request, env));
+}
+// (A friend visiting with a pass: the photos of what's for friends.)
+async function friendMaySee(request, env, type, slug) {
+  if (!(request.headers.get('Cookie') || '').includes('corner_friend=') || !(await friends.friendVisitor(request, env))) return false;
+  const { posts } = await buildEverything(env, { forFriends: true });
+  return posts.some((p) => p.type === type && p.slug === slug);
 }
 async function hiddenPost(env, type, slug) {
   if (!TYPES.includes(type)) return false;
@@ -1184,7 +1222,8 @@ async function leaveComment(request, env, ctx) {
   const message = cleanText(body.message, 1000);
   if (message.length < 2) return json({ error: 'Write a comment first.' }, 400);
   const [type, slug] = String(body.post || '').split('/');
-  const data = await buildEverything(env);
+  // (A friend visiting with a pass may comment on what's for friends too.)
+  const data = await buildEverything(env, (await visitingFriend(request, env)) ? { forFriends: true } : undefined);
   if (!data.site.comments) return json({ error: 'Comments are switched off here.' }, 403);
   const post = data.posts.find((x) => x.type === type && x.slug === slug);
   if (!post) return json({ error: 'That post isn’t here any more.' }, 404);
@@ -1608,6 +1647,8 @@ async function adminApi(request, env, url, ctx) {
       // A photo of yours for a friend's shared album (sent to their site), or one of your
       // friends' photos taken out of an album of yours.
       // A ♥, a ☆, a smile or an emoji on a friend's post (sent to their site).
+      // Visiting a friend's site as a friend: a pass from it, and where to go with it.
+      if (p === 'friends/visit' && m === 'POST') return json(await friends.visitPass(env, fkey || String(body.friend || '')));
       if (p === 'friends/react' && m === 'POST') return json(await friends.reactTo(env, fkey || String(body.friend || ''), body));
       if (p === 'friends/album' && m === 'POST') {
         const out = await friends.addToAlbum(env, fkey || String(body.friend || ''), body);
