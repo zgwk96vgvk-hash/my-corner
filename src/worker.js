@@ -981,9 +981,9 @@ async function dressForVisitors(env, data, viewer = 'everyone') {
   // (Their keepsake designs and place categories, for drawing their posts as on their site.)
   data.friendKeepsakes = pals.keepsakes || [];
   data.friendCategories = pals.categories || [];
-  // (No Friends tab when you don't show this viewer friends' posts; the friends list, if shown to
-  // them, is on About.)
-  data.friendsTab = !!pals.postsShown;
+  // (No Friends tab when this viewer may see neither your friends' posts nor your friends list:
+  // with only the list, the tab holds the neighbourhood and the buddies.)
+  data.friendsTab = !!pals.postsShown || pals.buddies.length > 0;
   // (Whether visitors can ask to hear when you post.)
   data.notifyPosts = (await push.settings(env).catch(() => ({}))).visitors === true;
   // (Today's photo of the day, from what this browser may see.)
@@ -1658,6 +1658,8 @@ async function adminApi(request, env, url, ctx) {
       // Notes between friends: your mail, sending one, marking them read, deleting one.
       if (p === 'mail' && m === 'GET') return json(await friends.myMail(env));
       if (p === 'mail/send' && m === 'POST') return json(await friends.sendNote(env, String(body.friend || ''), body));
+      if (p === 'mail/knocks-heard' && m === 'POST') return json(await friends.clearKnocks(env));
+      if (p === 'mail/knock' && m === 'POST') return json(await friends.sendKnock(env, String(body.friend || '')));
       if (p === 'mail/read' && m === 'POST') return json(await friends.markMail(env, body.ids === 'all' ? 'all' : body.ids || [], body.read !== false));
       if (p === 'mail/delete' && m === 'POST') return json(await friends.deleteNote(env, String(body.id || '')));
       // A comment from you on a friend's post (it goes on at their site, straight away).

@@ -29,6 +29,24 @@ export function setMuted(m) {
   document.dispatchEvent(new CustomEvent('mutechange'));
 }
 
+// How loud, 0 to 1 (the old computers' volume knobs turn it; see machine.js), kept in this
+// browser only. Each sound also tells the page it played, so speakers can pulse and needles swing.
+export function getVolume() {
+  const v = Number(store.getItem('volume'));
+  return store.getItem('volume') == null || !Number.isFinite(v) ? 1 : Math.max(0, Math.min(1, v));
+}
+export function setVolume(v) {
+  store.setItem('volume', String(Math.max(0, Math.min(1, Number(v) || 0))));
+  document.dispatchEvent(new CustomEvent('volumechange'));
+}
+let lastPing = 0;
+function ping(level) {
+  const now = performance.now();
+  if (now - lastPing < 40) return;
+  lastPing = now;
+  document.dispatchEvent(new CustomEvent('sitesound', { detail: { level: Math.min(1, level) } }));
+}
+
 function audio() {
   if (isMuted()) return null;
   try {
@@ -47,7 +65,9 @@ function tone(freq, start, dur, type = 'sine', vol = 0.05) {
   const g = a.createGain();
   o.type = pack.type || type;
   freq *= pack.pitch || 1;
-  vol *= pack.vol || 1;
+  vol *= (pack.vol || 1) * getVolume();
+  ping(vol * 18);
+  if (vol <= 0) return;
   o.frequency.value = freq;
   const t = a.currentTime + start;
   if (pack.glide) {
@@ -69,6 +89,8 @@ function noise(dur, freq, vol, start = 0) {
   const len = Math.floor(a.sampleRate * dur);
   const buf = a.createBuffer(1, len, a.sampleRate);
   const d = buf.getChannelData(0);
+  vol *= getVolume();
+  ping(vol);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3) * vol;
   const src = a.createBufferSource();
   const f = a.createBiquadFilter();
@@ -105,6 +127,18 @@ export const sound = {
     tone(140, 0, 0.12, 'square', 0.05);
     tone(90, 0.02, 0.18, 'sine', 0.06);
   },
+  // A knock at the door: three raps on wood.
+  knock: () => {
+    for (const t of [0, 0.16, 0.32]) {
+      noise(0.07, 520, 0.9, t);
+      tone(150, t, 0.07, 'sine', 0.06);
+    }
+  },
+  // A door creaking open: a slow, wavering squeak.
+  creak: () => {
+    for (let i = 0; i < 9; i++) tone(300 + i * 34 + (i % 2 ? 26 : 0), i * 0.055, 0.07, 'sawtooth', 0.012);
+    noise(0.06, 700, 0.3, 0.52);
+  },
   // The highlights cabinet: a small key turning in its lock, and the doors' latch.
   key: () => {
     noise(0.05, 4200, 0.35, 0);
@@ -121,7 +155,9 @@ export const sound = {
     const len = Math.floor(a.sampleRate * 0.18);
     const buf = a.createBuffer(1, len, a.sampleRate);
     const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2) * 0.25;
+    const loud = 0.25 * getVolume();
+    ping(loud);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2) * loud;
     const src = a.createBufferSource();
     const f = a.createBiquadFilter();
     f.type = 'bandpass';

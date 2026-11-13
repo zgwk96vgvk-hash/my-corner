@@ -90,7 +90,7 @@ const WHO = [
 ];
 const SEEN_BY = [
   ['listSeen', 'Your friends list', 'Your buddies’ names and how they are, on your About page and at the top of Friends, linking to their sites.', { everyone: 'Everyone sees your friends list now.', friends: 'Your friends list is for your friends now (when they visit).', me: 'Your friends list is just for you now.' }],
-  ['postsSeen', 'Their posts', 'The Friends tab, with your friends’ posts and their photos of the day. (Their posts only go in your Home for you.)', { everyone: 'Everyone sees your friends’ posts now.', friends: 'Your friends’ posts are for your friends now (when they visit).', me: 'Your friends’ posts are just for you now.' }]
+  ['postsSeen', 'Their posts', 'The Friends tab, with your friends’ posts and their pictures of the day. (Their posts only go in your Home for you.)', { everyone: 'Everyone sees your friends’ posts now.', friends: 'Your friends’ posts are for your friends now (when they visit).', me: 'Your friends’ posts are just for you now.' }]
 ];
 function privacyBox(ctx, d, act) {
   const post = (body, msg) => act(() => ctx.api('friends/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), msg);
@@ -123,6 +123,12 @@ function privacyBox(ctx, d, act) {
       { class: 'row check fr-share' },
       h('input', { type: 'checkbox', checked: d.letShare, onchange: (e) => post({ letShare: e.target.checked }, e.target.checked ? 'Friends may show your posts on their sites.' : 'Your posts now stay off your friends’ sites for their visitors (your friends still see them, signed in).') }),
       h('span', null, h('b', null, 'Let friends show my posts on their sites. '), h('small', null, 'Untick it and your friends still see your posts when they’re signed in on their own site, but never show them to their visitors.'))
+    ),
+    h(
+      'label',
+      { class: 'row check fr-knocks' },
+      h('input', { type: 'checkbox', checked: d.knocks !== false, onchange: (e) => post({ knocks: e.target.checked }, e.target.checked ? 'Friends can knock on your door.' : 'Friends can’t knock on your door now.') }),
+      h('span', null, h('b', null, 'Let friends knock on my door. '), h('small', null, 'A friend can knock on your house in their neighbourhood: signed in here, your site gives a little shake and says who it was. Nobody else ever sees it.'))
     ),
     h(
       'label',

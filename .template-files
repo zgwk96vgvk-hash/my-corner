@@ -31,6 +31,7 @@ content/travel.md
 content/tv/2026-09-28-harbour-lights.md
 content/tv/2026-10-19-the-night-shift.md
 content/wishlist.md
+docs/THEME-KIT.md
 package-lock.json
 package.json
 public/admin/admin.css
@@ -55,9 +56,12 @@ public/css/desktop.css
 public/css/extras.css
 public/css/fonts.css
 public/css/keepsake-maker.css
+public/css/kit.css
+public/css/kits.css
 public/css/leather.css
 public/css/life-keepsakes.css
 public/css/mac.css
+public/css/machine.css
 public/css/music-keepsakes.css
 public/css/planner.css
 public/css/real.css
@@ -186,8 +190,10 @@ public/js/helper.js
 public/js/journal-pages.js
 public/js/keepsake-maker.js
 public/js/life-keepsakes.js
+public/js/machine.js
 public/js/maps.js
 public/js/music-keepsakes.js
+public/js/neighbourhood.js
 public/js/owner-door.js
 public/js/phone.js
 public/js/pictures.js
