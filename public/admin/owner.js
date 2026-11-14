@@ -894,8 +894,23 @@ function decorateSuggestions() {
   }
 }
 
-// Your status: tap ✎ by it, and change it there.
-const PRESENCES = [['online', 'Online'], ['away', 'Away'], ['brb', 'Be right back'], ['lunch', 'Out to lunch'], ['busy', 'Busy'], ['offline', 'Appear offline']];
+// Online while you're here: your page tells your site every minute while it's open and in view,
+// and says goodbye when you leave (your site shows you offline a few minutes after the last
+// word if a goodbye never comes).
+let presenceOn = false;
+function keepPresence() {
+  if (presenceOn) return;
+  presenceOn = true;
+  const say = (state) => fetch('/admin/api/presence', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }), keepalive: state === 'bye' }).catch(() => {});
+  say('here');
+  setInterval(() => !document.hidden && say('here'), 60000);
+  document.addEventListener('visibilitychange', () => !document.hidden && say('here'));
+  addEventListener('pagehide', () => say('bye'));
+}
+
+// Your status: tap ✎ by it, and change it there. ("Automatic" is online while you're here, and
+// offline when you're not; any other you choose lasts until you've been away a day.)
+const PRESENCES = [['online', 'Automatic'], ['away', 'Away'], ['brb', 'Be right back'], ['lunch', 'Out to lunch'], ['busy', 'Busy'], ['offline', 'Appear offline']];
 function decorateStatus() {
   for (const block of document.querySelectorAll('.status-block:not([data-okit])')) {
     block.dataset.okit = '1';
@@ -916,7 +931,7 @@ function decorateStatus() {
         )
       );
       text.addEventListener('keydown', (e) => e.key === 'Enter' && save.click());
-      block.append(h('div', { class: 'okit-status-box' }, chips, text, h('div', { class: 'okit-row' }, btn('Cancel', '', () => block.querySelector('.okit-status-box')?.remove()), save)));
+      block.append(h('div', { class: 'okit-status-box' }, chips, h('p', { class: 'okit-hint' }, 'Automatic: online while you’re on your site, offline when you’re not. Any other you pick lasts until you’ve been away for a day.'), text, h('div', { class: 'okit-row' }, btn('Cancel', '', () => block.querySelector('.okit-status-box')?.remove()), save)));
       text.focus();
     }, { 'aria-label': 'Change your status', title: 'Change your status' });
     block.querySelector('.status-pill')?.after(edit);
@@ -1207,12 +1222,21 @@ function decorateFriendsTab() {
   // (After the neighbourhood, which always comes first.)
   const line = feed.querySelector(':scope > .nb');
   (line ? (n) => line.after(n) : (n) => feed.prepend(n))(h('div', { class: 'okit-note' }, h('span', null, say[seen] || say.me), btn('Change', '', () => controlPanel('friends'))));
-  // A knocker by each friend's house in the neighbourhood.
-  for (const plot of feed.querySelectorAll('.nb-plot[data-house]')) {
+  decorateHouses(feed);
+  // (A stroll to another street and back draws the houses again: they get theirs again too.)
+  new MutationObserver(() => decorateHouses(feed)).observe(feed, { childList: true, subtree: true });
+  // (And in the village, the neighbourhood opened out.)
+  new MutationObserver(() => document.querySelector('.vl') && decorateHouses(document.querySelector('.vl'))).observe(document.body, { childList: true });
+}
+// A knocker by each friend's house in the neighbourhood, and a note to slip through the door.
+function decorateHouses(feed) {
+  for (const plot of feed.querySelectorAll('.nb-plot[data-house]:not([data-okit])')) {
+    plot.dataset.okit = '1';
     const b = (owner.friendsMine?.buddies || []).find((x) => x.url === plot.dataset.house);
     if (!b?.key) continue;
     const who = (b.owner || b.name || 'them').split(/\s+/)[0];
     plot.append(btn('✊', 'okit-knock', () => knockOn(b.key, who), { title: `Knock on ${who}’s door`, 'aria-label': `Knock on ${who}’s door` }));
+    plot.append(btn('✉', 'okit-knock okit-slip', () => sendTo(b.key), { title: `Send ${who} a note`, 'aria-label': `Send ${who} a note` }));
   }
 }
 // Knocking on a friend's door: three raps, their house jumps, and their site hears of it (signed
@@ -1570,18 +1594,6 @@ function drawMail(body, quietly = false) {
   fit();
   new ResizeObserver(fit).observe(wrap);
 }
-// On the Friends tab: a note to each buddy.
-function decorateBuddies() {
-  for (const li of document.querySelectorAll('.ff-buddies li:not([data-okit])')) {
-    li.dataset.okit = '1';
-    const name = li.querySelector('.ff-buddy b')?.textContent || 'them';
-    const b = (owner.friendsMine?.buddies || []).find((x) => x.owner === name || x.name === name);
-    if (!b?.key) continue;
-    li.classList.add('okit-buddy');
-    li.append(btn('✉', 'okit-note-btn', () => sendTo(b.key), { 'aria-label': `Send ${name} a note`, title: `Send ${name} a note` }));
-  }
-}
-
 // ---------- notifications ----------
 // Control Panel › Notifications: this device on or off, what you're told about, a test, your
 // other devices, and whether visitors may ask to hear when you post. (See src/push.js.)
@@ -1873,7 +1885,6 @@ function decorate() {
     decorateFriendPosts();
     decorateStartHead();
     decorateFriendsTab();
-    decorateBuddies();
     friendsDot();
   } finally {
     decorating = false;
@@ -1898,6 +1909,7 @@ export async function startOwner(s) {
     return;
   }
   document.documentElement.classList.add('owner-on');
+  keepPresence();
   ownerHooks.holding = () => writing();
   // (A friend's site as their friend, from anywhere on yours: the photos-of-the-day line, say.)
   ownerHooks.visitFriend = visitFriend;

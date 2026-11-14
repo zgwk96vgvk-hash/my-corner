@@ -47,6 +47,7 @@ public/admin/plain.html
 public/admin/themes.js
 public/css/album.css
 public/css/android.css
+public/css/arcade.css
 public/css/base.css
 public/css/cabinet.css
 public/css/cards.css
@@ -69,6 +70,7 @@ public/css/shelves.css
 public/css/skins.css
 public/css/study-keepsakes.css
 public/css/thought-keepsakes.css
+public/css/village.css
 public/css/visa.css
 public/css/xp.css
 public/cursors/cursor-mac.svg
@@ -172,6 +174,7 @@ public/index.html
 public/js/album.js
 public/js/app.js
 public/js/apps.js
+public/js/arcade.js
 public/js/atlas.js
 public/js/bar-decor.js
 public/js/cabinet.js
@@ -192,6 +195,7 @@ public/js/keepsake-maker.js
 public/js/life-keepsakes.js
 public/js/machine.js
 public/js/maps.js
+public/js/maze.js
 public/js/music-keepsakes.js
 public/js/neighbourhood.js
 public/js/owner-door.js
@@ -218,6 +222,8 @@ public/js/thought-keepsakes.js
 public/js/top-room.js
 public/js/util.js
 public/js/viewer.js
+public/js/village-decor.js
+public/js/village.js
 public/js/visa.js
 public/js/welcome.js
 public/sw.js
@@ -249,6 +255,7 @@ src/auth.js
 src/content.js
 src/email.js
 src/friends.js
+src/presence.js
 src/push.js
 src/strip.js
 src/version.js
@@ -274,7 +281,6 @@ tests/interact.test.mjs
 tests/journal.test.mjs
 tests/lib.mjs
 tests/locked.test.mjs
-tests/offline.test.mjs
 tests/owner.test.mjs
 tests/photos.test.mjs
 tests/planner.test.mjs

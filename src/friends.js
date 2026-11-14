@@ -23,7 +23,7 @@
 //   export and visitors never see.
 
 import * as push from './push.js';
-import { safeMarkdown, buildPost, photoOfDay, TYPES, THEME_OPTIONS, KEEPSAKE_SHAPES, THEMES, THEME_CHARMS } from './content.js';
+import { safeMarkdown, buildPost, photoOfDay, TYPES, THEME_OPTIONS, KEEPSAKE_SHAPES, THEMES, THEME_CHARMS, tidyVillage } from './content.js';
 import { cleanCards, OWN_CARD, MIX, cleanMix, cleanSeed } from '../public/js/card-parts.js';
 
 const STORE = 'data/_friends.json';
@@ -182,6 +182,42 @@ async function verify(request, env, store, body, secrets) {
   const candidates = secrets ? secrets : store.friends.filter((f) => f.url === from || (f.aliases || []).includes(from));
   for (const c of candidates) if (await signatureOk(c.secret, request.method, pq, time, body, sig)) return { ...c, from };
   return null;
+}
+
+// ---------- strolling between streets ----------
+// Your street, as anyone may see it: just the houses your Friends tab already shows a visitor
+// (names, addresses, lights on or off), never more. Another site's neighbourhood asks for it when
+// someone strolls over from theirs.
+export async function street(env, site) {
+  const pals = await publicFriends(env, { viewer: 'everyone' }).catch(() => ({ buddies: [] }));
+  return { v: 1, name: clipText(site.name, 60), owner: clipText(site.owner, 60), houses: pals.buddies.slice(0, STREET_MAX).map((b) => ({ name: clipText(b.name, 60), owner: clipText(b.owner, 60), url: b.url, presence: b.presence === 'offline' ? 'offline' : 'online' })) };
+}
+const STREET_MAX = 24;
+const clipText = (v, n) => String(v || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
+// Another site's street, fetched for a stroll, and trimmed to what a street holds: nothing else
+// they sent gets through. Null when there's no way there (no such site, or one that hasn't got
+// streets yet).
+export async function fetchStreet(env, origin) {
+  const res = await fetch(origin + '/api/street', { headers: { 'User-Agent': FRIEND_UA, Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(6000) }).catch(() => null);
+  if (!res || !res.ok || !/json/.test(res.headers.get('Content-Type') || '')) return null;
+  const text = await res.text().catch(() => '');
+  if (!text || text.length > 60000) return null;
+  let s;
+  try {
+    s = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!s || typeof s !== 'object' || !Array.isArray(s.houses)) return null;
+  const seen = new Set();
+  const houses = [];
+  for (const h of s.houses.slice(0, STREET_MAX)) {
+    const url = siteOrigin(h?.url, env);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    houses.push({ name: clipText(h.name, 60) || new URL(url).hostname, owner: clipText(h.owner, 60), url, presence: h.presence === 'offline' ? 'offline' : 'online' });
+  }
+  return { name: clipText(s.name, 60) || new URL(origin).hostname, owner: clipText(s.owner, 60), url: origin, houses };
 }
 
 // ---------- the public endpoints a friend's site calls ----------
@@ -367,10 +403,17 @@ export function friendFeed(data, origin, to = null) {
     name: site.name,
     owner: site.owner,
     presence: site.presence,
+    // (Automatic: online while you've the site open. Then when you were last here, to the nearest
+    // ten minutes, so their site can tell you've gone.)
+    ...(site.presence_auto ? { presence_auto: true, seen: site.presence_seen || 0 } : {}),
     status: site.status,
     status_updated: site.status_updated,
     // (Whether friends can comment on your posts: only while comments are on.)
     comments_on: !!site.comments,
+    // Your best score in the arcade (none while there's nothing posted for friends to see).
+    // How you've decorated your plot in the village (likewise).
+    village: data.posts.length && data.village?.items?.length ? data.village.items : null,
+    arcade: data.posts.length && data.arcade?.scores?.[0] ? { best: data.arcade.scores[0].score, date: data.arcade.scores[0].date } : null,
     posts: data.posts.slice(0, 30).map((p) => ({
       id: `${p.type}/${p.slug}`,
       type: p.type,
@@ -563,6 +606,11 @@ function tidyDay(d) {
 }
 
 // Tidies a feed from a friend's site before keeping it: plain values only, sizes capped.
+function tidyArcade(a) {
+  const best = Math.floor(Number(a?.best));
+  if (!Number.isFinite(best) || best < 1 || best > 9999999) return null;
+  return { best, date: /^\d{4}-\d{2}-\d{2}$/.test(a?.date) ? a.date : '' };
+}
 export function tidyFeed(f, friend) {
   const posts = (Array.isArray(f?.posts) ? f.posts : []).slice(0, 30).map((p) => ({
     id: clean(p.id, 120),
@@ -592,12 +640,18 @@ export function tidyFeed(f, friend) {
     name: clean(f?.name, 60) || friend.name,
     owner: clean(f?.owner, 60),
     presence: PRESENCE.includes(f?.presence) ? f.presence : 'online',
+    presence_auto: f?.presence_auto === true,
+    seen: Number.isFinite(Number(f?.seen)) ? Number(f.seen) : 0,
     status: clean(f?.status, 200),
     status_updated: Number(f?.status_updated) || null,
     // (Whether they let you show their posts to your visitors.)
     share: f?.share !== false,
     // (Their photo of the day, for your Friends reel.)
     photo_day: tidyDay(f?.photo_day),
+    // (Their best score in the arcade.)
+    arcade: tidyArcade(f?.arcade),
+    // (How they've decorated their plot in the village.)
+    village: Array.isArray(f?.village) ? tidyVillage(f.village) : null,
     // (Whether you can comment on their posts: a site new enough, with comments on.)
     comments_on: f?.comments_on === true,
     posts,
@@ -1147,6 +1201,12 @@ export async function friendPhoto(env, key, photoKey) {
 // ever loads pictures from itself. `viewer`: "everyone", or "friends" for a friend visiting.
 // `mine`: for you, signed in: everything, whoever else sees it, with friends-only posts and the
 // comments on each post (and whether you can add one).
+// How a friend shows: as they chose; or, when theirs is automatic, online only while they've been
+// on their site lately (they say so every ten minutes or so while they're there).
+function shownPresence(feed) {
+  if (!feed?.presence_auto) return feed?.presence || 'online';
+  return feed.presence === 'online' && Date.now() - (feed.seen || 0) < 25 * 60 * 1000 ? 'online' : 'offline';
+}
 export async function publicFriends(env, { mine = false, viewer = 'everyone' } = {}) {
   const store = await loadFriends(env);
   const who = mine ? 'me' : viewer === 'friends' ? 'friends' : 'everyone';
@@ -1168,8 +1228,8 @@ export async function publicFriends(env, { mine = false, viewer = 'everyone' } =
     const feed = c?.feed;
     const fresh = c && c.ok !== false && Date.now() - (c.at || 0) < 3 * 60 * 60 * 1000;
     const person = { name: feed?.name || f.name, owner: feed?.owner || f.owner, url: f.url, ...(mine ? { key: f.key, comments_on: !!feed?.comments_on } : {}) };
-    // (Their names, how they are and their status: only where the list is shown.)
-    if (listShown) buddies.push({ ...person, presence: fresh ? feed?.presence || 'online' : 'offline', status: feed?.status || '' });
+    // (Their names, how they are, their status and their best in the arcade: only where the list is shown.)
+    if (listShown) buddies.push({ ...person, presence: fresh ? shownPresence(feed) : 'offline', status: feed?.status || '', ...(feed?.arcade ? { arcade: feed.arcade } : {}), ...(feed?.village?.length ? { village: feed.village } : {}) });
     if (!postsShown(store, feed, who)) return;
     // Their photo of the day, for the line at the top of Friends (a friends-only one just for you).
     const pd = feed?.photo_day;

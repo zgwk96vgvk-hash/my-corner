@@ -766,6 +766,9 @@ export const OPTIONS = {
   // The whole computer around the site on a big screen, and a phone of its own on a phone (see
   // machine.js). The colours stay the theme's; these bring the case, the speakers and the knobs.
   machine: { name: 'Computer (on a big screen)', choices: { none: 'None: the site fills the screen', beige: 'Beige box: a cream monitor and stereo speakers', breadbin: 'Breadbin: round speakers and a rainbow stripe', bluedesk: 'Blue desk: a slim black monitor', glass: 'Aurora glass: glass windows and gadgets', superbar: 'Superbar: blue glass and big buttons', tiles: 'Start tiles: flat colour tiles', terminal: 'Tiling terminal: panes and a prompt', teletext: 'Teletext telly: a wood-cabinet TV', hifi: 'Hi-fi stack: speakers, meters and a volume knob', browser: 'Old browser: a marquee and a webring' } },
+  // The screensaver: things from the site drifting by with pipes behind, a walk through a maze
+  // hung with your photos, or each in turn (see screensaver.js and maze.js).
+  screensaver: { name: 'Screensaver', choices: { drift: 'Drifting: bits of the site, with pipes behind', maze: 'The maze: a walk past your photos', turns: 'Taking turns' } },
   handset: { name: 'Phone (on a phone)', choices: { none: 'None: the site fills the phone', flip: 'Flip phone: opens with a flip, five little lights', handheld: 'Handheld: four shades of green and a direction pad' } }
 };
 
@@ -1029,7 +1032,7 @@ const dayNumber = (date) => Math.floor((date - new Date(date.getFullYear(), 0, 0
 // Parts that can be left out: of the profile header, and of the taskbar's tray.
 export const HIDEABLE = { lastpost: 'Last post date', status: 'Status', playing: 'Now playing', countdown: 'Countdown', nudge: 'Nudge button', clock: 'Clock (taskbar)', traystatus: 'Status (taskbar, computers)', fortune: 'Fortune cookie', photoday: 'Photo of the day' };
 // The sections, for the main menu's order and for hiding ones you don't use.
-export const SECTIONS = { home: 'Home', thoughts: 'Thoughts', journal: 'Places', atlas: 'Map', friends: 'Friends', album: 'Photos', more: 'Dumps & lists', passport: 'Passport', wishlist: 'Trips wishlist', planner: 'Planner', guestbook: 'Guestbook', books: 'Books', films: 'Films', podcasts: 'Podcasts', music: 'Music', tv: 'TV', stats: 'Travel stats', about: 'About' };
+export const SECTIONS = { home: 'Home', thoughts: 'Thoughts', journal: 'Places', atlas: 'Map', friends: 'Friends', album: 'Photos', more: 'Dumps & lists', passport: 'Passport', wishlist: 'Trips wishlist', planner: 'Planner', guestbook: 'Guestbook', books: 'Books', films: 'Films', podcasts: 'Podcasts', music: 'Music', tv: 'TV', arcade: 'Arcade', stats: 'Travel stats', about: 'About' };
 export const DEFAULT_MENU = ['home', 'thoughts', 'journal', 'atlas', 'friends'];
 export const FONT_FAMILIES = {
   classic: '',
@@ -1071,11 +1074,11 @@ export const postFontAttrs = (post) => (post?.font && OPTIONS.font.choices[post.
 // Every section's name (in the menus, on the desktop icons and in the Explore menu) and the
 // site's buttons can be renamed. Left empty, each keeps its usual words.
 export const LABELS = {
-  home: 'Home', thoughts: 'Thoughts', journal: 'Places', atlas: 'Map', friends: 'Friends', album: 'Photos', more: 'Dumps & lists', passport: 'Passport', wishlist: 'Trips wishlist', planner: 'Planner', guestbook: 'Guestbook', books: 'Books', films: 'Films', podcasts: 'Podcasts', music: 'Music', tv: 'TV', stats: 'Travel stats', about: 'About',
+  home: 'Home', thoughts: 'Thoughts', journal: 'Places', atlas: 'Map', friends: 'Friends', album: 'Photos', more: 'Dumps & lists', passport: 'Passport', wishlist: 'Trips wishlist', planner: 'Planner', guestbook: 'Guestbook', books: 'Books', films: 'Films', podcasts: 'Podcasts', music: 'Music', tv: 'TV', arcade: 'Arcade', stats: 'Travel stats', about: 'About',
   explore: 'Explore', others: 'Others', search: 'Search', leave: 'Leave', nudge: 'Nudge', open_journal: 'Open in journal', read_review: 'Read the review', visitor: 'Visitor', come_in: 'Tap to come in'
 };
 export const LABEL_GROUPS = [
-  ['Sections', ['home', 'thoughts', 'journal', 'atlas', 'friends', 'album', 'more', 'passport', 'wishlist', 'planner', 'guestbook', 'books', 'films', 'podcasts', 'music', 'tv', 'stats', 'about']],
+  ['Sections', ['home', 'thoughts', 'journal', 'atlas', 'friends', 'album', 'more', 'passport', 'wishlist', 'planner', 'guestbook', 'books', 'films', 'podcasts', 'music', 'tv', 'arcade', 'stats', 'about']],
   ['Buttons', ['explore', 'others', 'search', 'leave', 'nudge', 'open_journal', 'read_review', 'visitor', 'come_in']]
 ];
 export function cleanLabels(v) {

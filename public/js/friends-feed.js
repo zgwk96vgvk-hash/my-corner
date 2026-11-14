@@ -1,15 +1,17 @@
 // The Friends tab: posts from friends who run their own copy of this site, as one scrollable
-// feed (newest first), under a list of your friends. Tap a buddy to see only their posts. Everything comes through your own site; nothing loads from theirs.
+// feed (newest first), under the neighbourhood: a street with a house for each friend (it's the
+// buddy list too: lights on while they're online, their status in a bubble). Everything comes
+// through your own site; nothing loads from theirs.
 // (Signed in, their posts are mixed into your Home too: see friendPost.)
 import { h } from './util.js';
-import { presenceDot, ago } from './statusbar.js';
+import { ago } from './statusbar.js';
 import { withEmoticons } from './emoticons.js';
 import { friendHtml } from './friend-html.js';
 import { card, foldLong } from './apps.js';
 import { friendSkin } from './card-dress.js';
 import { ownerHooks } from './owner-door.js';
 import { sound } from './sound.js';
-import { activeSkin, lookOf, drawingUrl, festiveScenery } from './skins.js';
+import { activeSkin, lookOf, drawingUrl, festiveScenery, FESTIVE_COLOURS } from './skins.js';
 import { houseState } from './neighbourhood.js';
 
 // Each friend's post cards (from their site), by the name their posts use.
@@ -21,15 +23,19 @@ const colourFor = (s) => AVATAR[[...String(s)].reduce((n, c) => (n * 31 + c.char
 const initial = (s) => (String(s || '?').trim()[0] || '?').toUpperCase();
 const safeUrl = (u) => (/^https?:\/\//i.test(String(u || '')) ? String(u) : null);
 
-let only = null;
-
 // A square user picture, like the ones on the XP welcome screen.
 function avatar(who, size = 'small') {
   return h('span', { class: `ff-avatar ${size}`, style: { '--av': colourFor(who.url || who.name) }, 'aria-hidden': 'true' }, initial(who.owner || who.name));
 }
 
 // The street dresses for the season or festive day, as the rest of the site does (and not at
-// all when they're switched off): a festive day strings its garland across the sky.
+// all when they're switched off). A festive day strings its garland across the sky, tints the
+// sky in its colours, hangs its drawings on every door and stands one in every garden, and brings
+// its own weather; an evening one (lanterns, lamps, bonfires) brings dusk, and a few bring
+// fireworks.
+const EVENING = new Set(['diwali', 'bonfire_night', 'eid_al_fitr', 'eid_al_adha', 'ramadan', 'hanukkah', 'mid_autumn', 'tanabata', 'halloween', 'yalda', 'lunar_new_year', 'dia_de_muertos']);
+const FIREWORKS = new Set(['bonfire_night', 'diwali', 'lunar_new_year']);
+const WEATHER = { petals: 'petal', confetti: 'confetti', stars: 'star', snow: 'snow', leaves: 'leaf', sunshine: 'spark' };
 function lineDress() {
   const on = document.documentElement.dataset;
   const t = activeSkin();
@@ -40,8 +46,23 @@ function lineDress() {
   try {
     garland = on.festival ? festiveScenery(look, id, t).garland : '';
   } catch {}
-  return { charm: (i) => drawingUrl(look.charms[i % look.charms.length], t, 26), garland };
+  const fest = on.festival ? id : '';
+  return {
+    charm: (i) => drawingUrl(look.charms[i % look.charms.length], t, 26),
+    // (The same, as a plain address for a picture inside the drawing.)
+    pic: (i) => drawingUrl(look.charms[i % look.charms.length], t, 26).replace(/^url\("(.*)"\)$/, '$1'),
+    garland,
+    fest,
+    falling: fest ? WEATHER[look.falling] || '' : '',
+    colours: fest ? FESTIVE_COLOURS[fest] || [t.accent, t.main, '#f6c431'] : null,
+    evening: EVENING.has(fest),
+    fireworks: FIREWORKS.has(fest) && !look.quiet
+  };
 }
+// Whether the street's at night: dark mode, or a computer theme that's dark all over.
+const isNight = () => document.documentElement.dataset.theme === 'dark' || getComputedStyle(document.documentElement).getPropertyValue('--k-scene-night').trim() === '1';
+// (The festive day's dressing, for the houses being drawn.)
+let dressNow = null;
 // The Neighbourhood: a little street at the top of Friends, one house per friend on your list.
 // It shows nothing the list doesn't: a name, whether they're online (lights on) and, only where
 // you may see their posts, whether they posted today (smoke from the chimney) and whether
@@ -85,12 +106,19 @@ const WALLS = ['#ffd23f', '#ff7eb0', '#4fd6cb', '#b79bff', '#ff9a4d', '#8be35a',
 const ROOFS = ['#e8443a', '#7a4ad8', '#ff7a1a', '#1f9d8f', '#3a6fe8', '#d6338a', '#f0b400', '#2fa84a'];
 const hashOf = (v) => [...String(v)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7);
 
+const UPTO = { places: '🧳', music: '🎵', books: '📚', films: '🍿', tv: '📺', podcasts: '🎧', photos: '📷', thoughts: '💭', lists: '📝', quotes: '❝' };
+const DAYS3 = 3 * 24 * 60 * 60 * 1000;
+// How big a house has grown, and what its owner's been up to lately, from posts this viewer may see.
+function growth(list, now = Date.now()) {
+  const newest = list.reduce((n, p) => ((p.ts || 0) > (n?.ts || 0) ? p : n), null);
+  return { grow: list.length, upto: newest && now - (newest.ts || 0) < DAYS3 ? newest.type : '' };
+}
 function house(b, st, looks, i, ctx, day) {
   const root = document.documentElement.dataset;
   const season = root.season;
   const hsh = hashOf(b.url || b.name);
   const S = SHAPES[hsh % SHAPES.length];
-  const lk = looks[(ctx.data.friendPosts || []).find((p) => p.friend?.url === b.url)?.friend?.look] || {};
+  const lk = b.colours || looks[(ctx.data.friendPosts || []).find((p) => p.friend?.url === b.url)?.friend?.look] || {};
   const wall = hexOk(lk.main) || WALLS[hsh % WALLS.length];
   const roof = hexOk(lk.accent) || ROOFS[(hsh >>> 3) % ROOFS.length];
   const name = (b.owner || b.name || '').split(/\s+/)[0];
@@ -122,7 +150,7 @@ function house(b, st, looks, i, ctx, day) {
     svg('ellipse', { cx: 82, cy: 150, rx: 56, ry: 6, class: 'nb-shadow' }),
     // (The garden path, from the door down to the road.)
     svg('path', { d: `M${d + 13} 148l-6 22h34l-10-22Z`, class: `${k} nb-path` }),
-    day?.photo_day?.src ? null : prop,
+    day?.photo_day?.src ? null : dressNow?.fest ? svg('image', { href: dressNow.pic(i + 1), x: 136, y: 112, width: 34, height: 34, class: 'nb-fest-prop' }) : prop,
     svg(
       'g',
       { class: 'nb-body', transform: 'translate(22 34)' },
@@ -144,6 +172,8 @@ function house(b, st, looks, i, ctx, day) {
         eye(S.ex[1]),
         svg('path', { d: `M${d - 9} 114V98Q${d} 84 ${d + 9} 98V114Z`, class: `${k} nb-door` }),
         svg('circle', { cx: d + 5, cy: 103, r: 1.6, class: 'nb-knob' }),
+        // (A festive day's drawing hung on the door.)
+        dressNow?.fest ? svg('image', { href: dressNow.pic(i), x: d - 8, y: 86, width: 16, height: 16, class: 'nb-fest-door' }) : null,
         svg('path', { d: 'M88 116q-3-12 8-10q4-8 12-2q9 2 4 12Z', class: `${k} nb-bush` }),
         season === 'spring' ? [[95, 109], [103, 106], [108, 111]].map(([x, y]) => svg('circle', { cx: x, cy: y, r: 2, class: 'nb-bloom' })) : null,
         lights
@@ -157,6 +187,11 @@ function house(b, st, looks, i, ctx, day) {
     // (The mailbox: its flag up, and a letter poking out, while there's something new.)
     svg('path', { d: 'M13 150V126', class: `${k} nb-post` }),
     svg('path', { d: 'M3 128v-8q0-9 9-9h7q8 0 8 9v8Z', class: `${k} nb-box` }),
+    // (A house grows with its site: window boxes, then a dish on the roof, a shed, a flag.)
+    (st.grow || 0) >= 3 ? svg('g', { class: 'nb-grow', transform: 'translate(22 34)' }, [S.ex[0], S.ex[1]].map((x) => [svg('rect', { x: x - 11, y: S.ey + 13, width: 22, height: 4.5, rx: 1.5, class: `${k} nb-wbox`, 'stroke-width': 1.8 }), [x - 6, x, x + 6].map((fx, j) => svg('circle', { cx: fx, cy: S.ey + 12, r: 2.6, fill: ['#ff5d8f', '#ffd23f', '#ff9a1f'][j] }))])) : null,
+    (st.grow || 0) >= 8 ? svg('g', { class: 'nb-grow', transform: `translate(${22 + S.sx - 6} ${34 + S.sy - 4})` }, svg('path', { d: 'M0 18V0M-7 4h14M-5 9h10', class: k, fill: 'none', 'stroke-width': 2 })) : null,
+    (st.grow || 0) >= 15 ? svg('g', { class: 'nb-grow' }, svg('path', { d: 'M128 150v-22l13-9 13 9v22Z', class: `${k} nb-shed`, 'stroke-width': 2.5 }), svg('path', { d: 'M137 150v-11h8v11', class: `${k} nb-door`, 'stroke-width': 2 })) : null,
+    (st.grow || 0) >= 30 ? svg('g', { class: 'nb-grow nb-flagpole', transform: `translate(${22 + S.sx + 4} ${34 + S.sy - 12})` }, svg('path', { d: 'M0 26V0', class: k, 'stroke-width': 2 }), svg('path', { d: 'M1 1h14l-4 5 4 5H1Z', class: `${k} nb-pennant`, 'stroke-width': 1.5 })) : null,
     st.mail ? svg('g', { class: 'nb-mail' }, svg('path', { d: 'M27 122V104h8v6h-8', class: `${k} nb-flag` }), svg('g', { class: 'nb-letter' }, svg('rect', { x: 5, y: 100, width: 17, height: 12, rx: 1.5, class: `${k} nb-env`, 'stroke-width': 2 }), svg('path', { d: 'M5 101l8.5 6 8.5-6', class: `${k} nb-flap`, 'stroke-width': 2 }))) : null
   );
   const pic = day?.photo_day?.src ? daySign(day, name) : null;
@@ -178,7 +213,17 @@ function house(b, st, looks, i, ctx, day) {
       ownerHooks.visitFriend(key, b.url);
     }
   });
-  return h('div', { class: 'nb-plot', 'data-house': b.url }, a, pic);
+  // (Their status, in a speech bubble over the house: on your own street.)
+  const said = b.status ? h('span', { class: 'nb-say', title: b.status }, withEmoticons(String(b.status).slice(0, 90), 13)) : null;
+  // (What they're up to, by the door: from their latest post you may see, for a few days; or a
+  // "back soon" sign while they're away.)
+  const away = ['away', 'brb', 'lunch', 'busy'].includes(b.presence);
+  const upto = away ? h('span', { class: 'nb-upto nb-back', 'aria-hidden': 'true' }, 'back soon') : st.upto ? h('span', { class: 'nb-upto', 'aria-hidden': 'true' }, UPTO[st.upto] || '') : null;
+  const plot = h('div', { class: 'nb-plot', 'data-house': b.url }, said, a, pic, upto);
+  if (st.lit) plot.dataset.online = '1';
+  if (st.mail) plot.dataset.mail = '1';
+  plot.dataset.wall = wall;
+  return plot;
 }
 
 // Their photo of the day (the very one their own site shows today), on a sign in the garden.
@@ -242,75 +287,193 @@ function arrivals(buddies) {
   return new Set(buddies.filter((b) => now[b.url] === 1 && was[b.url] === 0).map((b) => b.url));
 }
 
+// Strolling: the signpost at the end of your street points to each friend's street, and theirs
+// to their friends' streets, and so on. Another street is only what that site's own Friends tab
+// shows any visitor (names and lights on or off; no posts, no mail, no smoke), fetched by your
+// own site. Where you've strolled to, beyond your own street (kept while the page is open).
+let trail = [];
+const firstName = (b) => (b.owner || b.name || '').split(/\s+/)[0];
+const homeUrl = () => location.origin;
+
 function neighbourhood(ctx) {
   const buddies = ctx.data.buddies || [];
   if (!buddies.length) return null;
-  const posts = ctx.data.friendPosts || [];
-  const seen = readSeen();
-  const now = new Date();
-  const came = arrivals(buddies);
-  if (came.size) setTimeout(() => sound.creak?.(), 350);
+  const night = isNight();
   const dress = lineDress();
-  const night = document.documentElement.dataset.theme === 'dark';
-  const season = document.documentElement.dataset.season;
-  const k = 'nb-k';
-  const falling = { winter: 'snow', autumn: 'leaf', spring: 'petal' }[season];
-  return h(
-    'section',
-    { class: 'nb' + (night ? ' night' : ''), 'aria-label': 'Your neighbourhood' },
-    h('div', { class: 'nb-title' }, '🏘 The neighbourhood'),
-    h(
-      'div',
-      { class: 'nb-scroll' },
-      h(
-        'div',
-        { class: 'nb-street' },
-        h('span', { class: 'nb-stars', 'aria-hidden': 'true' }),
-        skyFace(night),
-        h('span', { class: 'nb-clouds', 'aria-hidden': 'true' }),
-        h('span', { class: 'nb-clouds far', 'aria-hidden': 'true' }),
-        night ? null : svg('svg', { viewBox: '0 0 40 12', class: 'nb-birds', 'aria-hidden': 'true' }, svg('path', { d: 'M2 7q4-6 7 0q3-6 7 0', class: `${k} nb-wing` }), svg('path', { d: 'M24 5q3-5 6 0q3-5 6 0', class: `${k} nb-wing` })),
-        dress?.garland ? h('span', { class: 'nb-garland', 'aria-hidden': 'true', style: `--nb-garland:${dress.garland}` }) : null,
-        // (Rolling hills behind, the lawn in front.)
-        svg('svg', { viewBox: '0 0 600 96', preserveAspectRatio: 'none', class: 'nb-land', 'aria-hidden': 'true' }, svg('path', { d: 'M0 60Q80 10 170 46Q250 0 340 44Q430 8 520 40Q570 24 600 44V96H0Z', class: `${k} nb-hill` }), svg('path', { d: 'M0 72Q75 66 150 72T300 72T450 72T600 72V96H0Z', class: `${k} nb-lawn` })),
-        h('div', { class: 'nb-row' }, buddies.map((b, i) => house(b, { ...houseState(b, posts, now, seen), arrived: came.has(b.url) }, ctx.data.friendLooks || {}, i, ctx, (ctx.data.friendDays || []).find((x) => x.url === b.url)))),
-        h(
+  const dusk = !night && !!dress?.evening;
+  const section = h('section', { class: 'nb' + (night ? ' night' : '') + (dusk ? ' night dusk' : '') + (dress?.fest ? ' fest' : '') });
+  if (dress?.fest) {
+    section.dataset.fest = dress.fest;
+    dress.colours.slice(0, 3).forEach((c, n) => section.style.setProperty(`--nb-f${n + 1}`, c));
+  }
+  const note = (text) => {
+    section.querySelector('.nb-note')?.remove();
+    if (text) section.querySelector('.nb-title')?.append(h('span', { class: 'nb-note', role: 'status' }, text));
+  };
+  // Over to another street (or back along the way you came).
+  let busy = false;
+  const go = async (to, label) => {
+    if (busy) return;
+    sound.click?.();
+    if (to === homeUrl()) return walk([]);
+    const back = trail.findIndex((t) => t.url === to);
+    if (back >= 0) return walk(trail.slice(0, back + 1));
+    busy = true;
+    note(`Strolling over to ${label}’s street…`);
+    let s = null;
+    try {
+      const res = await fetch('/api/stroll?to=' + encodeURIComponent(to), { headers: { Accept: 'application/json' } });
+      s = res.ok ? await res.json() : null;
+    } catch {}
+    busy = false;
+    if (!s || !Array.isArray(s.houses)) return note(`No way through to ${label}’s street just now.`);
+    walk([...trail, s].slice(-8));
+  };
+  const walk = (next) => {
+    const scene = section.querySelector('.nb-street');
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const away = next.length >= trail.length ? 'nb-out' : 'nb-out back';
+    trail = next;
+    if (!scene || calm) return show();
+    scene.className += ' ' + away;
+    setTimeout(() => show(next.length >= 1 && away === 'nb-out' ? 'nb-in' : 'nb-in back'), 420);
+  };
+  const show = (arrive = '') => {
+    const here = trail[trail.length - 1];
+    section.setAttribute('aria-label', here ? `${firstName(here)}’s street` : 'Your neighbourhood');
+    section.replaceChildren(titleOf(here), sceneOf(ctx, here, go, arrive));
+  };
+  // (Top right: the whole neighbourhood, opened out as a village.)
+  const opener = (here) =>
+    h('button', {
+      type: 'button',
+      class: 'nb-open',
+      title: 'Open the whole neighbourhood',
+      onclick: () => {
+        const night = isNight();
+        const dress = lineDress();
+        // (The village is only fetched the first time it's opened.)
+        import('./village.js').then(({ openVillage }) => openVillage({ ctx, home: !here, title: here ? `${firstName(here)}’s neighbourhood` : 'Your neighbourhood', seed: here?.url || homeUrl(), houses: plotsFor(ctx, here, go).map((el) => ({ el })), me: here ? null : myHouse(ctx), dress, night: night || !!dress?.evening, dusk: !night && !!dress?.evening, festive: !!dress?.fest }));
+      }
+    }, '⤢ Open');
+  const titleOf = (here) => {
+    const row = titleBar(here);
+    row.append(opener(here));
+    return row;
+  };
+  const titleBar = (here) =>
+    here
+      ? h(
           'div',
-          { class: 'nb-road', 'aria-hidden': 'true' },
-          h(
-            'span',
-            { class: 'nb-car' },
-            svg('svg', { viewBox: '0 0 60 34' }, svg('path', { d: 'M4 24v-6q0-4 5-5l6-1q5-9 13-9h8q8 0 12 9q9 1 9 7v5Z', class: `${k} nb-carbody` }), svg('path', { d: 'M19 12q4-6 9-6h2v6ZM33 6h3q5 0 8 6H33Z', class: `${k} nb-glass`, 'stroke-width': 2 }), svg('circle', { cx: 16, cy: 25, r: 5.5, class: `${k} nb-wheel` }), svg('circle', { cx: 44, cy: 25, r: 5.5, class: `${k} nb-wheel` }), svg('circle', { cx: 55, cy: 18, r: 2, class: 'nb-beam' }))
-          )
-        ),
-        falling ? h('span', { class: `nb-weather ${falling}`, 'aria-hidden': 'true' }, Array.from({ length: 14 }, (_, n) => h('i', { style: `left:${(n * 37 + 11) % 100}%; animation-delay:${-((n * 1.7) % 9)}s; animation-duration:${7 + (n % 5)}s` }))) : null
-      )
-    )
-  );
+          { class: 'nb-title nb-trail' },
+          '🚶 ',
+          h('button', { type: 'button', class: 'nb-crumb', onclick: () => go(homeUrl()) }, 'My street'),
+          trail.map((t, i) => [h('span', { class: 'nb-sep', 'aria-hidden': 'true' }, ' › '), i === trail.length - 1 ? h('b', null, `${firstName(t)}’s street`) : h('button', { type: 'button', class: 'nb-crumb', onclick: () => go(t.url, firstName(t)) }, `${firstName(t)}’s street`)])
+        )
+      : h('div', { class: 'nb-title' }, '🏘 The neighbourhood');
+  // (If you'd strolled off before the page was drawn again, you're still there.)
+  show();
+  // (Off screen, the street holds still: nothing moves that nobody can see.)
+  if ('IntersectionObserver' in window) new IntersectionObserver(([e]) => section.classList.toggle('nb-still', !e.isIntersecting)).observe(section);
+  return section;
 }
 
-function buddyList(buddies, redraw) {
-  const online = buddies.filter((b) => b.presence !== 'offline').length;
-  return h(
-    'section',
-    { class: 'ff-buddies', 'aria-label': 'Buddies' },
-    h('div', { class: 'ff-buddies-title' }, h('span', { class: 'ff-logo', 'aria-hidden': 'true' }), 'Buddies', h('small', null, ` (${online} of ${buddies.length} online)`)),
-    h(
-      'ul',
-      null,
-      buddies.map((b) =>
+// The houses on a street: your friends' on yours (lights, smoke, mail, their status), or, on
+// another street, just lights (your own house there takes you home).
+function plotsFor(ctx, here, go) {
+  const buddies = ctx.data.buddies || [];
+  const posts = ctx.data.friendPosts || [];
+  const now = new Date();
+  dressNow = lineDress();
+  if (!here) {
+    const seen = readSeen();
+    const came = arrivals(buddies);
+    if (came.size) setTimeout(() => sound.creak?.(), 350);
+    return buddies.map((b, i) => house(b, { ...houseState(b, posts, now, seen), ...growth(posts.filter((p) => p.friend?.url === b.url)), arrived: came.has(b.url) }, ctx.data.friendLooks || {}, i, ctx, (ctx.data.friendDays || []).find((x) => x.url === b.url)));
+  }
+  return here.houses.map((b, i) => {
+    const you = b.url === homeUrl();
+    const el = house(you ? { ...b, owner: 'You', name: 'You' } : b, { lit: b.presence !== 'offline' }, {}, i, ctx, null);
+    if (you) {
+      const a = el.querySelector('.nb-house');
+      a.removeAttribute('target');
+      a.href = '#/friends';
+      a.title = a.ariaLabel = 'Your house: back to your street';
+      a.addEventListener('click', (e) => (e.preventDefault(), e.stopImmediatePropagation(), document.querySelector('.vl')?.remove(), go(homeUrl())), { capture: true });
+    }
+    return el;
+  });
+}
+
+// Your own house, for the middle of the village: in your theme's colours, with your status.
+function myHouse(ctx) {
+  const site = ctx.data.site || {};
+  const t = activeSkin();
+  const el = house({ url: homeUrl(), name: site.name || 'You', owner: 'You', status: site.status || '', colours: t ? { main: t.main, accent: t.accent } : null, presence: site.presence }, { lit: site.presence !== 'offline', ...growth(ctx.data.posts || []) }, {}, 0, ctx, null);
+  const a = el.querySelector('.nb-house');
+  a.removeAttribute('target');
+  a.removeAttribute('rel');
+  a.href = '#/';
+  a.title = a.ariaLabel = 'Your house';
+  el.removeAttribute('data-house');
+  return el;
+}
+
+function sceneOf(ctx, here, go, arrive) {
+  const buddies = ctx.data.buddies || [];
+  const posts = ctx.data.friendPosts || [];
+  const now = new Date();
+  const dress = lineDress();
+  dressNow = dress;
+  const night = isNight() || !!dress?.evening;
+  const season = document.documentElement.dataset.season;
+  const k = 'nb-k';
+  const falling = dress?.fest ? dress.falling : { winter: 'snow', autumn: 'leaf', spring: 'petal' }[season];
+  const cols = dress?.colours || [];
+  let plots = plotsFor(ctx, here, go);
+  if (here && !plots.length) plots = [h('div', { class: 'nb-plot nb-empty' }, h('span', { class: 'nb-name' }, 'Nobody about'))];
+  // The signpost at the end of the road: one board for each street you can stroll to from here.
+  const ways = (here ? here.houses : buddies).filter((b) => b.url && b.url !== homeUrl() && b.url !== here?.url).slice(0, 12);
+  const post = ways.length
+    ? h(
+        'div',
+        { class: 'nb-plot nb-way' },
         h(
-          'li',
-          null,
-          h(
-            'button',
-            { type: 'button', class: 'ff-buddy' + (only === b.url ? ' on' : ''), 'aria-pressed': String(only === b.url), onclick: () => { only = only === b.url ? null : b.url; redraw(); } },
-            presenceDot({ presence: b.presence }),
-            avatar(b),
-            h('span', { class: 'ff-buddy-text' }, h('b', null, b.owner || b.name), b.owner ? h('small', null, ` (${b.name})`) : null, b.status ? h('span', { class: 'ff-buddy-status' }, withEmoticons(b.status, 14)) : null)
-          )
-        )
+          'div',
+          { class: 'nb-boards', role: 'group', 'aria-label': 'Stroll to another street' },
+          ways.map((b, i) => h('button', { type: 'button', class: 'nb-board', style: `--nb-tilt:${[-4, 3, -2, 4, -3][i % 5]}deg; --nb-board:${WALLS[hashOf(b.url) % WALLS.length]}`, onclick: () => go(b.url, firstName(b)) }, `${firstName(b)}’s street`, h('span', { 'aria-hidden': 'true' }, ' ➜')))
+        ),
+        h('span', { class: 'nb-way-post', 'aria-hidden': 'true' }),
+        h('span', { class: 'nb-way-say', 'aria-hidden': 'true' }, 'Stroll')
       )
+    : null;
+  return h(
+    'div',
+    { class: 'nb-scroll' },
+    h(
+      'div',
+      { class: 'nb-street' + (arrive ? ' ' + arrive : '') },
+      h('span', { class: 'nb-stars', 'aria-hidden': 'true' }),
+      skyFace(night),
+      h('span', { class: 'nb-clouds', 'aria-hidden': 'true' }),
+      h('span', { class: 'nb-clouds far', 'aria-hidden': 'true' }),
+      night ? null : svg('svg', { viewBox: '0 0 40 12', class: 'nb-birds', 'aria-hidden': 'true' }, svg('path', { d: 'M2 7q4-6 7 0q3-6 7 0', class: `${k} nb-wing` }), svg('path', { d: 'M24 5q3-5 6 0q3-5 6 0', class: `${k} nb-wing` })),
+      dress?.garland ? h('span', { class: 'nb-garland', 'aria-hidden': 'true', style: `--nb-garland:${dress.garland}` }) : null,
+      // (Rolling hills behind, the lawn in front.)
+      svg('svg', { viewBox: '0 0 600 96', preserveAspectRatio: 'none', class: 'nb-land', 'aria-hidden': 'true' }, svg('path', { d: 'M0 60Q80 10 170 46Q250 0 340 44Q430 8 520 40Q570 24 600 44V96H0Z', class: `${k} nb-hill` }), svg('path', { d: 'M0 72Q75 66 150 72T300 72T450 72T600 72V96H0Z', class: `${k} nb-lawn` })),
+      h('div', { class: 'nb-row' }, plots, post),
+      h(
+        'div',
+        { class: 'nb-road', 'aria-hidden': 'true' },
+        h(
+          'span',
+          { class: 'nb-car' },
+          svg('svg', { viewBox: '0 0 60 34' }, svg('path', { d: 'M4 24v-6q0-4 5-5l6-1q5-9 13-9h8q8 0 12 9q9 1 9 7v5Z', class: `${k} nb-carbody` }), svg('path', { d: 'M19 12q4-6 9-6h2v6ZM33 6h3q5 0 8 6H33Z', class: `${k} nb-glass`, 'stroke-width': 2 }), svg('circle', { cx: 16, cy: 25, r: 5.5, class: `${k} nb-wheel` }), svg('circle', { cx: 44, cy: 25, r: 5.5, class: `${k} nb-wheel` }), svg('circle', { cx: 55, cy: 18, r: 2, class: 'nb-beam' }))
+        )
+      ),
+      // (Fireworks over the roofs, on the few days that have them.)
+      dress?.fireworks ? h('span', { class: 'nb-fireworks', 'aria-hidden': 'true' }, [[18, 22], [46, 12], [72, 26], [88, 10]].map(([x, y], n) => h('i', { style: `left:${x}%; top:${y}px; --c:${cols[n % cols.length] || '#ffd23f'}; animation-delay:${n * 0.7}s` }))) : null,
+      falling ? h('span', { class: `nb-weather ${falling}`, 'aria-hidden': 'true' }, Array.from({ length: 14 }, (_, n) => h('i', { style: `left:${(n * 37 + 11) % 100}%; animation-delay:${-((n * 1.7) % 9)}s; animation-duration:${7 + (n % 5)}s` + (falling === 'confetti' && cols.length ? `; background:${cols[n % cols.length]}` : '') }))) : null
     )
   );
 }
@@ -423,22 +586,10 @@ export function friendsApp(ctx) {
   looks = ctx.data.friendLooks || {};
   const wrap = h('div', { class: 'feed ff' });
   const redraw = () => {
-    const posts = only ? all.filter((p) => p.friend?.url === only) : all;
-    const pick = buddies.find((b) => b.url === only);
+    const posts = all;
     const parts = [
-      // (First of all: today's photos, on the line.)
-      only ? null : neighbourhood(ctx),
-      buddies.length ? buddyList(buddies, redraw) : null,
-      pick
-        ? h(
-            'div',
-            { class: 'ff-pick' },
-            presenceDot({ presence: pick.presence }),
-            h('b', null, pick.owner || pick.name),
-            pick.status ? h('span', { class: 'ff-pick-status' }, ' – ', withEmoticons(pick.status, 15)) : null,
-            h('button', { type: 'button', class: 'ff-all', onclick: () => { only = null; redraw(); } }, 'Everyone')
-          )
-        : null,
+      // (First of all: the street, with a house for each friend. It's the buddy list now too.)
+      neighbourhood(ctx),
       posts.length
         ? posts.map((p) => (p.full ? friendCard(p) : postCard(p)))
         : // (Never why: to a visitor, there's just nothing from friends yet.)

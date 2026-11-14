@@ -203,7 +203,34 @@ await test('while you’re away: the status shows on those days only, and visito
   eq((await overview()).site.away, { status: 'On holiday (plane)', presence: 'busy', from: day(-1), to: day(1) }, 'the back office has them');
   await putFile('site.md', `---\nname: Home Corner\nowner: Sam\nstatus: At my desk\naway_status: On holiday\naway_from: ${day(3)}\naway_to: ${day(9)}\n---\nHi.\n`);
   d = await publicData();
-  eq([d.site.status, d.site.presence], ['At my desk', 'online'], 'not yet');
+  eq([d.site.status, d.site.presence === 'away'], ['At my desk', false], 'not yet');
+});
+
+await test('online when you’re actually here: automatic, or one you chose until you’ve been away a day', async () => {
+  const say = (state) => fetch(`${BASE}/admin/api/presence`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) });
+  const shown = async () => (await publicData()).site.presence;
+  await putFile('site.md', '---\nname: Home Corner\nowner: Sam\n---\nHi.\n');
+  await say('here');
+  eq(await shown(), 'online', 'here: online');
+  await say('bye');
+  eq(await shown(), 'offline', 'gone: offline');
+  // One you choose holds while you keep coming back…
+  await putFile('site.md', '---\nname: Home Corner\nowner: Sam\npresence: busy\n---\nHi.\n');
+  await say('here');
+  eq(await shown(), 'busy', 'busy, as chosen');
+  await say('bye');
+  eq(await shown(), 'busy', 'still busy after you’ve gone for now');
+  await say('bye');
+  // …and lapses after a day away: back to automatic.
+  const { livePresence } = await import('../src/presence.js');
+  const now = Date.now();
+  const H = 3600e3;
+  eq(livePresence({ presence: 'busy' }, { seen: now - 23 * H, left: now - 23 * H }, now).presence, 'busy', 'away 23 hours: still busy');
+  eq(livePresence({ presence: 'busy' }, { seen: now - 25 * H, left: now - 25 * H }, now).presence, 'offline', 'away a day: automatic, and not here');
+  eq(livePresence({ presence: 'busy' }, { seen: 0, left: 0 }, now).presence, 'busy', 'never here since this came in: as chosen');
+  eq(livePresence({ presence: 'online' }, { seen: now - 60e3, left: 0 }, now).presence, 'online', 'automatic, here a minute ago: online');
+  eq(livePresence({ presence: 'online' }, { seen: now - 5 * 60e3, left: 0 }, now).presence, 'offline', 'no word for five minutes: offline');
+  eq(livePresence({ presence: 'busy', away_on: true }, { seen: 0, left: 0 }, now).presence, 'busy', 'a schedule for while you’re away still wins');
 });
 
 await test('the Status page: mood, while you’re away, fortunes, and a countdown from the planner; nothing else lost', async () => {
@@ -214,6 +241,7 @@ await test('the Status page: mood, while you’re away, fortunes, and a countdow
     await p.locator('.okit-menu button', { hasText: 'Control Panel' }).click();
     await p.locator('.cp-item[data-cp="status"]').click();
     await p.waitForSelector('.emo-picker[aria-label="Mood"]');
+    eq(await p.locator('.chip-btn', { hasText: 'Automatic' }).getAttribute('aria-pressed'), 'true', 'Automatic, to start with');
     await p.locator('.emo-picker[aria-label="Mood"] [aria-label="Cool"]').click();
     const plan = p.locator('select[aria-label="From your planner"]');
     eq((await plan.locator('option').allInnerTexts()).length, 2, 'only what’s still to do, with a date ahead');
@@ -311,6 +339,18 @@ await test('visitors: counted once a visit (never yours), and only how many from
   }, '/?owner=1#/');
   eq((await overview()).counter, after.counter, 'yours not counted');
 });
+await test('a wave from the bench in the village: a name and a few words, waiting for approval like the guestbook', async () => {
+  const sign = (body) => fetch(`${BASE}/api/guestbook`, { method: 'POST', headers: PERSON, body: JSON.stringify(body) }).then((r) => r.status);
+  eq(await sign({ name: 'Ana', wave: true }), 200, 'just a name is enough');
+  eq(await sign({ name: 'Bo', message: 'x'.repeat(200), wave: true }), 200, 'and a long message is cut short');
+  const waiting = (await overview()).pendingGuestbook.filter((g) => g.wave);
+  eq(waiting.map((g) => [g.name, g.message.length <= 80]).sort(), [['Ana', true], ['Bo', true]], 'waiting, as waves');
+  eq(waiting.find((g) => g.name === 'Ana').message, '👋', 'a wave with no words');
+  for (const g of waiting) await fetch(`${BASE}/admin/api/move?key=${encodeURIComponent(g.key)}&to=${encodeURIComponent(g.key.replace('guestbook-pending/', 'guestbook/'))}`, { method: 'POST' });
+  const gb = (await publicData()).guestbook.filter((g) => g.wave);
+  eq(gb.length, 2, 'on the site once approved');
+});
+
 
 const failed = report();
 await close();

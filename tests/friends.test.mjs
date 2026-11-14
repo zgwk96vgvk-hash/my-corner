@@ -197,7 +197,8 @@ await test('your site has a Friends tab with their posts if you choose (to start
   await site.goto(BASE + '/#/friends');
   await site.waitForSelector('.ff-full');
   assert(await site.locator('.xp-links a', { hasText: 'Friends' }).count(), 'a Friends tab');
-  eq(await site.locator('.ff-buddy').count(), 1, 'the buddy list');
+  eq(await site.locator('.ff-buddies').count(), 0, 'no separate buddy list: the street is it');
+  assert((await site.locator('.nb-say').first().innerText()).includes('revising'), 'their status, in a bubble over their house');
   // The neighbourhood: a house for each friend on the list, linking to their own site, lit while they're online.
   eq(await site.locator('.nb .nb-house').count(), 1, 'a house for the friend');
   eq(await site.locator('.nb-house').first().getAttribute('href'), BASE2, 'which opens their site');
@@ -210,8 +211,6 @@ await test('your site has a Friends tab with their posts if you choose (to start
   eq(await post.locator('a[href^="javascript"]').count(), 0, 'no script links');
   const loaded = await site.waitForFunction(() => { const img = document.querySelector('.ff-full img[src^="/friends-media/"]'); return img && img.complete && img.naturalWidth > 0; }, null, { timeout: 10000 }).then(() => true, () => false);
   assert(loaded, 'the photo shows');
-  await site.locator('.ff-buddy').first().click();
-  assert((await site.locator('.ff-pick').innerText()).includes('Lina'), 'tap a buddy to see only theirs');
   assert(!site.errors.length, site.errors.join('; '));
   await browser.close();
   await post_(api, 'friends/settings', { showOnSite: false });
@@ -220,6 +219,105 @@ await test('your site has a Friends tab with their posts if you choose (to start
   eq((await fetch(BASE + photo)).status, 404, 'and their photos too');
   await post_(api, 'friends/settings', { showOnSite: true });
   assert(!(await overview()).files.some((f) => f.key.startsWith('data/_')), 'friends files never listed');
+});
+
+await test('decorating your plot in the village: kept in village.md, and seen round your house on friends’ islands', async () => {
+  const out = await post_(api2, 'village', { items: [{ id: 'fountain', x: 40, y: 20 }, { id: 'nonsense', x: 1, y: 1 }, { id: 'bench', x: 9999, y: -9999 }] });
+  eq(out.items, [{ id: 'fountain', x: 40, y: 20 }, { id: 'bench', x: 360, y: -230 }], 'only real things, kept on the plot');
+  const md = await (await fetch(`${BASE2}/admin/api/file?key=village.md`)).text();
+  assert(/^- fountain 40 20$/m.test(md), 'a line in village.md');
+  await post_(api, 'friends/refresh');
+  eq((await publicData()).buddies[0].village?.[0]?.id, 'fountain', 'in their feed, and on your buddy list');
+  await post_(api2, 'village', { items: [] });
+  await post_(api, 'friends/refresh');
+  eq((await publicData()).buddies[0].village, undefined, 'gone once they clear it');
+});
+
+await test('online when you’re actually here: your friends see you online while you’ve your site open, and offline once you’ve gone', async () => {
+  const say = (state) => fetch(`${BASE}/admin/api/presence`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) });
+  const seenBy = async () => {
+    await post_(api2, 'friends/refresh');
+    return (await (await fetch(`${BASE2}/api/all`, { headers: { 'Cache-Control': 'no-cache' } })).json()).buddies.find((b) => b.url === BASE)?.presence;
+  };
+  await post_(api2, 'friends/settings', { listSeen: 'everyone' });
+  await say('here');
+  eq(await seenBy(), 'online', 'here: online on their site');
+  await say('bye');
+  eq(await seenBy(), 'offline', 'gone: offline on their site');
+});
+
+await test('the arcade: a friend’s best score on your high-score table, where your friends list is shown', async () => {
+  await post_(api2, 'arcade', { score: 777 });
+  await post_(api, 'friends/refresh');
+  const fr = await api('friends');
+  eq(fr.friends[0].cache.feed.arcade?.best, 777, 'in their feed');
+  const d = await publicData();
+  eq(d.buddies.map((b) => b.arcade?.best), [777], 'on your buddy list');
+  await post_(api, 'friends/settings', { showOnSite: false });
+  eq((await publicData()).buddies, [], 'not when your friends list is hidden');
+  await post_(api, 'friends/settings', { showOnSite: true });
+  // (Taken off on their site: gone from yours.)
+  await fetch(`${BASE2}/admin/api/file?key=arcade.md`, { method: 'PUT', body: '' });
+  await post_(api, 'friends/refresh');
+  eq((await api('friends')).friends[0].cache.feed.arcade, null, 'none once they take it off');
+});
+
+await test('strolling: from your street to a friend’s, only what their site shows any visitor', async () => {
+  const UA = { 'User-Agent': 'Mozilla/5.0 (test)' };
+  const was = (await api2('friends')).listSeen;
+  await post_(api2, 'friends/settings', { listSeen: 'everyone' });
+  // Their street, as anyone may see it: names, addresses, lights. Nothing else.
+  const st = await (await fetch(BASE2 + '/api/street', { headers: UA })).json();
+  assert(st.houses.some((h) => h.url === BASE), 'their street has your house');
+  for (const h of st.houses) eq(Object.keys(h).sort(), ['name', 'owner', 'presence', 'url'], 'and only what a house shows');
+  // Strolled to through your own site.
+  const s = await (await fetch(BASE + '/api/stroll?to=' + encodeURIComponent(BASE2), { headers: UA })).json();
+  eq([s.url, s.houses.map((h) => h.url)], [BASE2, st.houses.map((h) => h.url)], 'your site fetches their street');
+  eq((await fetch(BASE + '/api/stroll?to=javascript:alert(1)', { headers: UA })).status, 400, 'only to a proper site');
+  assert(['clear', 'cloud', 'rain', 'snow', 'fog', 'storm'].includes((await (await fetch(BASE + '/api/sky', { headers: UA })).json()).kind), 'the village’s sky');
+  eq((await fetch(BASE + '/api/stroll?to=' + encodeURIComponent(BASE2), { headers: { 'User-Agent': 'somebot/1' } })).status, 400, 'not for bots');
+  // In the neighbourhood: the signpost, over to their street, your own house there, and home again.
+  const browser = await chromium.launch();
+  try {
+    const v = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148' });
+    v.errors = [];
+    v.on('pageerror', (e) => v.errors.push(e.message));
+    await v.addInitScript(() => sessionStorage.setItem('entered', '1'));
+    await v.goto(BASE + '/#/friends');
+    await v.waitForSelector('.nb .nb-board');
+    // Opened out: the village, with every house and yours in the middle; Escape closes it.
+    await v.locator('.nb-open').click();
+    await v.waitForSelector('.vl.open');
+    eq(await v.locator('.vl .nb-plot.vl-plot').count(), (await v.locator('.feed .nb-plot[data-house]').count()) + 1, 'every house, and yours');
+    eq(await v.locator('.vl .vl-mine .nb-name').innerText(), 'You', 'yours in the middle');
+    assert(await v.locator('.vl .vl-person').count(), 'friends who are online, out in their gardens');
+    eq(await v.locator('.vl.vl-paused').count(), 0, 'moving while it’s in view');
+    eq(await v.locator('.vl :is(.vl-board, .vl-arcade, .vl-bench, .vl-fishing)').count(), 4, 'the noticeboard, the arcade, the bench and fishing');
+    await v.locator('.vl-fishing').dispatchEvent('click');
+    await v.locator('.vl-panel .vl-go').click();
+    assert((await v.locator('.vl-fish-say').innerText()).includes('Waiting'), 'a line cast');
+    await v.keyboard.press('Escape');
+    eq(await v.locator('.vl-panel').count(), 0, 'Escape puts the rod away first');
+    await v.keyboard.press('Escape');
+    await v.waitForFunction(() => !document.querySelector('.vl'));
+    await v.locator('.nb-board').first().click();
+    await v.waitForSelector('.nb-trail');
+    assert((await v.locator('.nb-trail').innerText()).includes('Lina’s street'), 'on their street');
+    eq(await v.locator('.nb .nb-house').count(), st.houses.length, 'a house for each on their list');
+    const mine = v.locator('.nb-house[aria-label="Your house: back to your street"]');
+    eq(await mine.count(), 1, 'yours among them');
+    eq(await v.locator('.nb-mail, .nb-puff, .nb-sign').count(), 0, 'no mail, smoke or pictures on another street');
+    await mine.click();
+    await v.waitForSelector('.nb-title:not(.nb-trail)');
+    eq(await v.locator('.nb-house').first().getAttribute('href'), BASE2, 'home again');
+    assert(!v.errors.length, v.errors.join('; '));
+  } finally {
+    await browser.close();
+  }
+  // Their list hidden: an empty street.
+  await post_(api2, 'friends/settings', { listSeen: 'me' });
+  eq((await (await fetch(BASE2 + '/api/street', { headers: UA })).json()).houses, [], 'nobody about when their list is hidden');
+  if (was) await post_(api2, 'friends/settings', { listSeen: was });
 });
 
 await test('a friends-only post: not on their site, nor on yours; only in your back office', async () => {
@@ -479,7 +577,7 @@ await test('notes between friends: the newest pops up, the rest wait in Mail; on
     // From the Friends tab: a note to a buddy.
     await q.keyboard.press('Escape');
     await q.goto(BASE + '/?owner=1#/friends');
-    await q.locator('.okit-note-btn').first().click();
+    await q.locator('.nb-plot .okit-slip').first().click();
     await q.waitForSelector('.ml-compose select');
     eq(await q.locator('.ml-compose select').inputValue(), 'localhost_8801', 'to them');
     assert(!q.errors.length, q.errors.join('; '));
@@ -507,6 +605,7 @@ await test('a knock at the door: a friend knocks from their neighbourhood; your 
     await p.goto(BASE + '/?owner=1#/friends');
     const knocker = p.locator('.nb-plot .okit-knock').first();
     await knocker.waitFor();
+    await p.locator('.nb-plot .okit-slip').first().waitFor({ timeout: 5000 }); // (a note to slip through each friend’s door)
     await knocker.click();
     await p.waitForFunction(() => /Knock knock! Lina/.test(document.querySelector('.okit-toast')?.textContent || ''));
     assert(await p.locator('.nb-plot.nb-knocked').count(), 'her house jumps');

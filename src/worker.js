@@ -4,10 +4,11 @@
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 import { stripImage, UnsupportedImage, CLEAN_TYPES } from './strip.js';
 import { parseVisited } from './content.js';
-import { TYPES, buildPost, isVisible, photoOfDay, postLevel, siteLevel, privacyOf, PRIVACY, todayIn, parseFortunes, POSTCARD_FRONTS, parseWishlist, parseSite, parseStatusLog, parseCategories, parseTravel, parsePassport, parseKeepsakeSettings, parseTheme, parseHighlights, parseHighlightsPast, parsePlanner, parseGuestbookEntry, parseComment, isCommentKey, splitFrontMatter, headerProblem } from './content.js';
+import { TYPES, buildPost, isVisible, photoOfDay, postLevel, siteLevel, privacyOf, PRIVACY, todayIn, parseFortunes, parseArcade, arcadeText, ARCADE_MAX, parseVillage, villageText, POSTCARD_FRONTS, parseWishlist, parseSite, parseStatusLog, parseCategories, parseTravel, parsePassport, parseKeepsakeSettings, parseTheme, parseHighlights, parseHighlightsPast, parsePlanner, parseGuestbookEntry, parseComment, isCommentKey, splitFrontMatter, headerProblem } from './content.js';
 import { adminCheck } from './auth.js';
 import { VERSION } from './version.js';
 import * as friends from './friends.js';
+import { presenceNow, livePresence, STATUS_LASTS } from './presence.js';
 import * as push from './push.js';
 import { receiveEmail, emailSettings } from './email.js';
 
@@ -62,7 +63,7 @@ export default {
           .refreshFriends(env)
           .then((r) => r.of && bumpVersion(env))
           .catch((e) => console.error(e)),
-        friends.shareNews(env, buildEverything).catch((e) => console.error(e)),
+        friends.shareNews(env, liveBuild).catch((e) => console.error(e)),
         // (A post scheduled for later that has just gone live: visitors who asked hear about it.)
         announce(env).catch((e) => console.error(e))
       ])
@@ -77,7 +78,7 @@ export default {
         const me = (await friends.loadFriends(env)).me;
         const url = post.draft ? '/?owner=1#/' : `/?owner=1#/post/${post.type}/${post.slug}`;
         await push.notifyOwner(env, 'email', { title: post.draft ? '📧 Your email is a draft' : '📧 Your email is on the site', body: post.title || 'Have a look', url, tag: 'email' }, me).catch(() => {});
-        if (!post.draft) ctx.waitUntil(Promise.all([friends.shareNews(env, buildEverything), announce(env, me)]).catch((e) => console.error(e)));
+        if (!post.draft) ctx.waitUntil(Promise.all([friends.shareNews(env, liveBuild), announce(env, me)]).catch((e) => console.error(e)));
       }
     }).catch((e) => {
       console.error('email', e);
@@ -147,7 +148,7 @@ async function route(request, env, ctx) {
       const res = await adminApi(request, env, url, ctx);
       // Anything saved might be news for your friends: their sites hear straight away (and
       // nothing is sent when what they see hasn't changed).
-      if (method !== 'GET' && res.ok) ctx.waitUntil(friends.shareNews(env, buildEverything).catch((e) => console.error(e)));
+      if (method !== 'GET' && res.ok) ctx.waitUntil(friends.shareNews(env, liveBuild).catch((e) => console.error(e)));
       // (And a post that has just gone on the site is announced to visitors who asked.)
       if (method !== 'GET' && res.ok) ctx.waitUntil(announce(env, url.origin).catch((e) => console.error(e)));
       return res;
@@ -156,6 +157,12 @@ async function route(request, env, ctx) {
   }
 
   if (p === '/api/all' && method === 'GET') return apiAll(request, env, ctx);
+  // Strolling between neighbourhoods: your own street (as any visitor sees it), and a stroll over
+  // to another site's (fetched here, so the page only ever talks to your own site).
+  if (p === '/api/street' && method === 'GET') return json(await friends.street(env, (await buildEverything(env)).site), 200, { 'Cache-Control': 'public, max-age=300' });
+  if (p === '/api/stroll' && method === 'GET') return stroll(request, env, ctx);
+  // The village's weather: the viewer's own (roughly where their connection is), never yours.
+  if (p === '/api/sky' && method === 'GET') return sky(request, ctx);
   if (p === '/api/visit' && method === 'POST') return visit(request, env);
   if (p === '/api/guestbook' && method === 'POST') return signGuestbook(request, env, ctx);
   if (p === '/api/comment' && method === 'POST') return leaveComment(request, env, ctx);
@@ -193,7 +200,7 @@ async function route(request, env, ctx) {
     return friends.friendPhotoForVisitor(env, parts[0], parts.slice(1).join('/'), who);
   }
   // Friends' sites talking to yours (every request signed with the secret you share).
-  if (p.startsWith('/api/friends/')) return friends.friendsApi(request, env, p, { buildEverything, mediaForFriend: (key) => friendMedia(env, key), friendComment: (who, info) => friendComment(env, who, info, ctx, url.origin), albumPhoto: (who, info) => albumPhoto(env, who, info), react: (info) => giveReaction(env, info, { forFriends: true }), changed: () => bumpVersion(env), news: () => friends.shareNews(env, buildEverything), waitUntil: (work) => ctx.waitUntil(work) });
+  if (p.startsWith('/api/friends/')) return friends.friendsApi(request, env, p, { buildEverything: liveBuild, mediaForFriend: (key) => friendMedia(env, key), friendComment: (who, info) => friendComment(env, who, info, ctx, url.origin), albumPhoto: (who, info) => albumPhoto(env, who, info), react: (info) => giveReaction(env, info, { forFriends: true }), changed: () => bumpVersion(env), news: () => friends.shareNews(env, liveBuild), waitUntil: (work) => ctx.waitUntil(work) });
   if (p.startsWith('/api/')) return json({ error: 'Not found' }, 404);
 
   return staticFile(request, env, p);
@@ -595,7 +602,7 @@ async function buildFresh(env, { includeHidden = false, forFriends = false } = {
   const parsedComments = commentKeys.map((k) => extras[k]?.value).filter(Boolean);
   const guestbook = parsedGuestbook.map(({ key, ...rest }) => rest).sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
-  const [wishText, travelText, logText, catText, passportText, keepText, themeText, highlightsText, plannerText, fortuneText] = await Promise.all([
+  const [wishText, travelText, logText, catText, passportText, keepText, themeText, highlightsText, plannerText, fortuneText, arcadeFile, villageFile] = await Promise.all([
     readText(env, 'wishlist.md'),
     readText(env, 'travel.md'),
     readText(env, 'status-log.md'),
@@ -605,7 +612,9 @@ async function buildFresh(env, { includeHidden = false, forFriends = false } = {
     readText(env, 'theme.md'),
     readText(env, 'highlights.md'),
     readText(env, 'planner.md'),
-    readText(env, 'fortunes.md')
+    readText(env, 'fortunes.md'),
+    readText(env, 'arcade.md'),
+    readText(env, 'village.md')
   ]);
   // The highlights cabinet: only posts that are on the site (the back office sees them all), and
   // each of them marked with its place on its shelf, for the rosette on its card.
@@ -704,6 +713,10 @@ async function buildFresh(env, { includeHidden = false, forFriends = false } = {
     guestbook,
     // The lines in your fortune cookie.
     fortunes: parseFortunes(fortuneText),
+    // Your best scores in the arcade.
+    arcade: parseArcade(arcadeFile),
+    // How you've decorated your plot in the village.
+    village: parseVillage(villageFile),
     generated: now
   };
   // (Not sent anywhere: for the back office, which lists every file and comment, and to know
@@ -974,6 +987,9 @@ async function dressForVisitors(env, data, viewer = 'everyone') {
   // (Whether posts are kept from visitors is never said: to them, a private site is just one
   // with nothing posted yet.)
   data.site = (({ privacy, ...rest }) => rest)(data.site);
+  // (Nor are your arcade scores on a site with nothing posted for this viewer: it's just quiet.)
+  if (!data.posts.length) data.arcade = { scores: [] };
+  if (!data.posts.length) data.village = { items: [] };
   data.buddies = pals.buddies;
   data.friendDays = pals.days || [];
   data.friendPosts = pals.posts;
@@ -992,18 +1008,47 @@ async function dressForVisitors(env, data, viewer = 'everyone') {
   return data;
 }
 
+// ---------- online when you're actually here ----------
+// You show online while you have your site open (signed in): your page says so every minute,
+// and says goodbye when you leave. A status you choose yourself (away, busy, appear offline…)
+// holds for as long as you keep coming back, and lapses after a day without you; then you're
+// back to automatic. A schedule set for while you're away still wins on its days.
+// (Only when you were last here: kept in data/_presence.json, never shown to anyone.)
+let presenceMemo = { at: 0, v: null };
+async function readPresence(env, fresh = false) {
+  if (!fresh && presenceMemo.v && Date.now() - presenceMemo.at < 15000) return presenceMemo.v;
+  let v = { seen: 0, left: 0 };
+  try {
+    const o = JSON.parse((await readText(env, 'data/_presence.json')) || '{}');
+    v = { seen: Number(o.seen) || 0, left: Number(o.left) || 0 };
+  } catch {}
+  presenceMemo = { at: Date.now(), v };
+  return v;
+}
+async function withLivePresence(env, data) {
+  if (!data?.site) return data;
+  const live = livePresence(data.site, await readPresence(env));
+  // (A fresh copy of the site's details: the rest of what was built is untouched.)
+  data.site = { ...data.site, presence: live.presence, presence_auto: live.auto, presence_seen: live.seen || 0 };
+  return data;
+}
+// (What friends' sites are given is built with the presence as it is right now.)
+const liveBuild = async (env, o) => withLivePresence(env, await buildEverything(env, o));
+
 async function apiAll(request, env, ctx) {
   // A friend visiting (with a pass from their own site): what's for friends, just for them, never
   // kept in any shared cache.
   if ((request.headers.get('Cookie') || '').includes('corner_friend=')) {
     const pal = await friends.friendVisitor(request, env);
     if (pal) {
-      const data = await dressForVisitors(env, await buildEverything(env, { forFriends: true }), 'friends');
+      const data = await dressForVisitors(env, await liveBuild(env, { forFriends: true }), 'friends');
       data.friendVisit = { as: pal.owner || pal.name, site: pal.url, until: pal.until };
       return json(data, 200, { 'Cache-Control': 'private, no-store', 'X-Friend-Visit': '1', Vary: 'Cookie' });
     }
   }
-  const version = (await readText(env, 'data/_version')) || '0';
+  // (Whether you're here, and whether a status you chose still holds, are part of the version.)
+  const { here, active } = presenceNow(await readPresence(env));
+  const version = ((await readText(env, 'data/_version')) || '0') + (here ? 'h' : '') + (active ? 'a' : '');
   // Rebuilt every 5 minutes as well, so posts scheduled for later appear on time.
   const slot = Math.floor(Date.now() / 300000);
   // Browsers check back every time (a tiny "nothing new" answer when nothing has changed), so
@@ -1021,7 +1066,7 @@ async function apiAll(request, env, ctx) {
   let res = await cache.match(cacheKey);
   let partial = false;
   if (!res) {
-    const data = await buildEverything(env);
+    const data = await liveBuild(env);
     partial = data.inside.partial;
     await dressForVisitors(env, data);
     res = json(data, 200, { 'Cache-Control': 'public, max-age=300' });
@@ -1108,6 +1153,42 @@ async function mediaFor(env, key, head = false, ifNoneMatch = '') {
 
 // ---------- visitors writing ----------
 
+// The village's sky: the weather where the viewer is, as Cloudflare places their connection (to
+// a city or so). Asked of the weather service by rough position only, kept half an hour per
+// rough position, and never stored or kept with anything else.
+const SKY = (code) => (code >= 95 ? 'storm' : code >= 71 && code <= 77 ? 'snow' : code >= 85 && code <= 86 ? 'snow' : code >= 51 ? 'rain' : code >= 45 ? 'fog' : code >= 2 ? 'cloud' : 'clear');
+async function sky(request, ctx) {
+  if (looksLikeBot(request)) return json({ kind: 'clear' });
+  const lat = Math.round(Number(request.cf?.latitude) * 2) / 2;
+  const lon = Math.round(Number(request.cf?.longitude) * 2) / 2;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || (!request.cf?.latitude && !request.cf?.longitude)) return json({ kind: 'clear' });
+  const key = new Request(`https://sky.cache/${lat},${lon}`);
+  const kept = await caches.default.match(key).catch(() => null);
+  if (kept) return json(await kept.json());
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=weather_code,wind_speed_10m,is_day&timezone=auto`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
+  const w = r?.ok ? await r.json().catch(() => null) : null;
+  const code = Number(w?.current?.weather_code);
+  const out = Number.isFinite(code) ? { kind: SKY(code), windy: Number(w.current.wind_speed_10m) > 30 } : { kind: 'clear' };
+  ctx.waitUntil(caches.default.put(key, new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=1800' } })).catch(() => {}));
+  return json(out);
+}
+
+// A stroll to another site's street: only to a proper site's address, only its street (see
+// friends.street), kept a few minutes so a busy street isn't asked again and again.
+async function stroll(request, env, ctx) {
+  if (looksLikeBot(request)) return json({ error: 'Not accepted' }, 400);
+  const to = friends.siteOrigin(new URL(request.url).searchParams.get('to'), env);
+  if (!to) return json({ error: 'There’s no street there.' }, 400);
+  if (to === new URL(request.url).origin) return json({ ...(await friends.street(env, (await buildEverything(env)).site)), url: to, home: true });
+  const key = new Request(`https://stroll.cache/${encodeURIComponent(to)}`);
+  const kept = await caches.default.match(key).catch(() => null);
+  if (kept) return json(await kept.json());
+  const s = await friends.fetchStreet(env, to);
+  if (!s) return json({ error: 'No way through to that street just now.' }, 404);
+  ctx.waitUntil(caches.default.put(key, new Response(JSON.stringify(s), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=300' } })).catch(() => {}));
+  return json(s);
+}
+
 function looksLikeBot(request) {
   const ua = (request.headers.get('User-Agent') || '').toLowerCase();
   return !ua || /bot|crawl|spider|slurp|curl|wget|python|headless/.test(ua);
@@ -1193,16 +1274,18 @@ async function signGuestbook(request, env, ctx) {
   }
   if (body.website) return json({ ok: true, pending: true }); // honeypot: bots fill hidden fields
   const name = cleanText(body.name, 40) || 'Visitor';
-  const message = cleanText(body.message, 600);
-  if (message.length < 2) return json({ error: 'Write a message first.' }, 400);
+  // (A wave from the bench in the village: just a name and, if they like, a few words.)
+  const wave = body.wave === true;
+  const message = wave ? cleanText(body.message, 80) || '👋' : cleanText(body.message, 600);
+  if (message.length < (wave ? 1 : 2)) return json({ error: 'Write a message first.' }, 400);
   const pending = await env.CONTENT.list({ prefix: 'guestbook-pending/', limit: 300 });
   if (pending.objects.length >= 300) return json({ error: 'The guestbook is full for now. Try again later.' }, 429);
   const { iso, file } = stamp();
   // (Sent as a postcard, with one of the painted fronts.)
-  const card = POSTCARD_FRONTS.includes(String(body.card || '')) ? String(body.card) : '';
-  const text = `---\nname: ${yamlString(name)}\ndate: ${yamlString(iso.slice(0, 16).replace('T', ' '))}\n${card ? `card: ${card}\n` : ''}---\n${message}\n`;
+  const card = wave ? '' : POSTCARD_FRONTS.includes(String(body.card || '')) ? String(body.card) : '';
+  const text = `---\nname: ${yamlString(name)}\ndate: ${yamlString(iso.slice(0, 16).replace('T', ' '))}\n${card ? `card: ${card}\n` : ''}${wave ? 'wave: true\n' : ''}---\n${message}\n`;
   await env.CONTENT.put(`guestbook-pending/${file}.md`, text, { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
-  later(ctx, push.notifyOwner(env, 'comments', { title: card ? `📮 ${name} sent you a postcard` : `✍ ${name} signed the guestbook`, body: message, url: '/?owner=1#/guestbook', tag: 'guestbook' }, new URL(request.url).origin));
+  later(ctx, push.notifyOwner(env, 'comments', { title: wave ? `👋 ${name} waved from the bench` : card ? `📮 ${name} sent you a postcard` : `✍ ${name} signed the guestbook`, body: message, url: '/?owner=1#/guestbook', tag: 'guestbook' }, new URL(request.url).origin));
   return json({ ok: true, pending: true });
 }
 
@@ -1365,13 +1448,54 @@ async function adminApi(request, env, url, ctx) {
     return json({ error: 'Not found' }, 404);
   }
 
+  // A game in the arcade, just played: kept in arcade.md if it's one of your best.
+  // Your page, saying you're here (every minute while it's open), or that you've gone.
+  if (p === 'presence' && m === 'POST') {
+    const body = await request.json().then((b) => (b && typeof b === 'object' ? b : {}), () => ({}));
+    const was = await readPresence(env, true);
+    const now = Date.now();
+    const next = body.state === 'bye' ? { seen: was.seen, left: now } : { seen: now, left: 0 };
+    await env.CONTENT.put('data/_presence.json', JSON.stringify(next));
+    presenceMemo = { at: now, v: next };
+    // (Back after more than a day: a status you'd chosen has lapsed, so it's taken off.)
+    if (body.state !== 'bye' && was.seen && now - was.seen >= STATUS_LASTS) {
+      const text = await readText(env, 'site.md');
+      if (text && /^presence:/m.test(text)) {
+        await env.CONTENT.put('site.md', text.replace(/^presence:.*\r?\n/m, ''), { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+        await bumpVersion(env);
+      }
+    }
+    return json({ ok: true });
+  }
+  // Your plot in the village, decorated: kept in village.md.
+  if (p === 'village' && m === 'POST') {
+    const body = await request.json().then((b) => (b && typeof b === 'object' ? b : {}), () => ({}));
+    await env.CONTENT.put('village.md', villageText(body.items), { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+    await bumpVersion(env);
+    return json({ ok: true, items: parseVillage(villageText(body.items)).items });
+  }
+  if (p === 'arcade' && m === 'POST') {
+    const body = await request.json().then((b) => (b && typeof b === 'object' ? b : {}), () => ({}));
+    const score = Math.floor(Number(body.score));
+    if (!Number.isFinite(score) || score < 1 || score > ARCADE_MAX) return json({ error: 'Not a score.' }, 400);
+    const { scores } = parseArcade(await readText(env, 'arcade.md'));
+    const best = scores[0]?.score || 0;
+    const date = todayIn(env.TIMEZONE || 'Europe/London');
+    const next = [...scores, { score, date }].sort((a, b) => b.score - a.score);
+    const kept = next.indexOf(next.find((s) => s.score === score && s.date === date)) < 10;
+    if (kept) {
+      await env.CONTENT.put('arcade.md', arcadeText(next), { httpMetadata: { contentType: 'text/markdown; charset=utf-8' } });
+      await bumpVersion(env);
+    }
+    return json({ ok: true, kept, best: score > best, scores: parseArcade(arcadeText(next)).scores });
+  }
   // An emoji you don't want on a post, taken off it.
   // A friend's photo taken out of one of your shared albums.
   if (p === 'albums/remove' && m === 'POST') {
     const body = await request.json().then((b) => (b && typeof b === 'object' ? b : {}), () => ({}));
     try {
       const out = await albumRemove(env, String(body.post || '').replace(/^photos\//, ''), String(body.file || ''));
-      ctx.waitUntil(friends.shareNews(env, buildEverything).catch(() => {}));
+      ctx.waitUntil(friends.shareNews(env, liveBuild).catch(() => {}));
       return json(out);
     } catch (e) {
       return json({ error: String(e.message || e) }, 400);
@@ -1386,7 +1510,7 @@ async function adminApi(request, env, url, ctx) {
     if (!PRIVACY.includes(body.level)) return json({ error: 'Everyone, friends or only you.' }, 400);
     try {
       const out = await setPrivacy(env, body.level);
-      ctx.waitUntil(friends.shareNews(env, buildEverything).catch(() => {}));
+      ctx.waitUntil(friends.shareNews(env, liveBuild).catch(() => {}));
       return json(out);
     } catch (e) {
       return json({ error: String(e.message || e) }, 500);
@@ -1397,7 +1521,7 @@ async function adminApi(request, env, url, ctx) {
     const body = await request.json().then((b) => (b && typeof b === 'object' ? b : {}), () => ({}));
     try {
       const out = await reopenPosts(env, Array.isArray(body.keys) ? body.keys.map(String).slice(0, 500) : null, body.to);
-      ctx.waitUntil(friends.shareNews(env, buildEverything).catch(() => {}));
+      ctx.waitUntil(friends.shareNews(env, liveBuild).catch(() => {}));
       return json(out);
     } catch (e) {
       return json({ error: String(e.message || e) }, 400);
@@ -1427,7 +1551,7 @@ async function adminApi(request, env, url, ctx) {
     return json({ ok: true });
   }
   if (p === 'overview' && m === 'GET') {
-    const data = await buildEverything(env, { includeHidden: true });
+    const data = await liveBuild(env, { includeHidden: true });
     const { objects } = data.inside;
     const files = objects
       .filter((o) => !o.key.startsWith('data/_'))
