@@ -6,7 +6,7 @@
 import { h } from '/js/util.js';
 import { CARD_STYLES, miniCard, mixMini, isOwnCard, ensureOwnCardsCss } from '/js/card-dress.js';
 import { CARD_PARTS, CARD_COLOURS, MAX_CARDS, cleanCards, nextCardId, MIX, MAX_SEED, cleanMix, cleanSeed } from '/js/card-parts.js';
-import { SKINS, SKIN_GROUPS, WALLPAPERS, CHARMS, CHARM_NAMES, resolveSkin, wallpaperCss, charmUrl, pointerSvgs, themeColour, TITLE_STOPS, inks, mix, emojiList, EMOJI_LAYOUTS, STICKER_SPOTS, STICKER_SIZES, OPTIONS, HIDEABLE, SECTIONS, DEFAULT_MENU, FONT_FAMILIES, APPS, APP_LOOKS, APP_EXTRAS, cleanApps, hexHsl, hslHex, SEASONS, FESTIVALS, FALLING_CHOICES, cleanMyDays, MAX_MY_DAYS, cleanFestivalDates, nextFestival, LABELS, LABEL_GROUPS, cleanLabels, GLASS_PLACES, SCENERY_PLACES, lookOf, cleanLooks, MAX_LOOK_CHARMS, seasonOf, BAR_APPS, BAR_DECOR, MAX_BAR_STICKERS, cleanBarDecor, isNight } from '/js/skins.js';
+import { isSeasonSkin, SKINS, SKIN_GROUPS, WALLPAPERS, CHARMS, CHARM_NAMES, resolveSkin, wallpaperCss, charmUrl, pointerSvgs, themeColour, TITLE_STOPS, inks, mix, emojiList, EMOJI_LAYOUTS, STICKER_SPOTS, STICKER_SIZES, OPTIONS, HIDEABLE, SECTIONS, DEFAULT_MENU, FONT_FAMILIES, APPS, APP_LOOKS, APP_EXTRAS, cleanApps, hexHsl, hslHex, SEASONS, FESTIVALS, FALLING_CHOICES, cleanMyDays, MAX_MY_DAYS, cleanFestivalDates, nextFestival, LABELS, LABEL_GROUPS, cleanLabels, GLASS_PLACES, SCENERY_PLACES, lookOf, cleanLooks, MAX_LOOK_CHARMS, seasonOf, BAR_APPS, BAR_DECOR, MAX_BAR_STICKERS, cleanBarDecor, isNight } from '/js/skins.js';
 import { FLOPPY_PIECES, FLOPPY_DRESS, outfitFor, dressFloppy, cleanFloppy } from '/js/floppy-look.js';
 import { FLOPPY } from '/js/helper.js';
 
@@ -23,6 +23,16 @@ let seasonPreview = '';
 let tucked = false;
 const firstChoice = (k) => Object.keys(OPTIONS[k].choices)[0];
 let ownTab = 'colours';
+// The parts of a theme, in a few groups (each remembers which of its parts you were last in).
+const TAB_GROUPS = [
+  ['look', 'Look', 'Colours, wallpaper, fonts and shapes.', ['colours', 'wallpaper', 'words', 'shapes', 'charms']],
+  ['posts', 'Posts & profile', 'How your posts and your profile header look.', ['cards', 'feed', 'header']],
+  ['menu', 'Menu & apps', 'What’s in the menu, each app’s look, and your own words on the buttons.', ['menu', 'apps', 'words_own']],
+  ['device', 'Computer & phone', 'The machine around your site, its taskbar, icons and sounds.', ['computer', 'bars', 'icons', 'tabicon']],
+  ['effects', 'Effects & seasons', 'Things that move, the time of year, the night, stickers and Floppy.', ['effects', 'seasons', 'night', 'stickers', 'floppy']],
+  ['share', 'Share', 'Pass your theme on, or load one.', ['share']]
+];
+const lastTabOf = {};
 let ownOpen = false;
 // Opens a page of the site in the preview (set while the Themes page is showing).
 let showInPreview = () => {};
@@ -275,6 +285,8 @@ function themeControls(ctx, saved, redraw, preview) {
         { type: 'button', role: 'radio', 'aria-checked': String(on), class: 'tm-card' + (on ? ' on' : ''), style: st.pointer !== 'none' ? { cursor: `${pointerSvgs(st).arrow} 3 3, pointer` } : null, onclick: () => {
           // A new theme brings all of its own parts (your stickers and emoji stay).
           draft = { ...blank(), theme: id, picture: d.picture, file: d.file, blob: d.blob, emoji: d.emoji, emoji_layout: d.emoji_layout, stickers: d.stickers, cards: d.cards, card_mix: d.card_mix, card_seed: d.card_seed, ...(d.card_style === MIX ? { card_style: MIX } : {}), hide: d.hide, menu: d.menu, sections_hidden: d.sections_hidden, apps: d.apps, festivals: d.festivals, my_days: d.my_days, festival_dates: d.festival_dates, labels: d.labels, glass: d.glass, looks: d.looks, bar_decor: d.bar_decor, floppy: d.floppy, ...Object.fromEntries(KEEP_ON_SWITCH.map((k) => [k, d[k]])) };
+          // (A season's own theme brings its season with it: what falls, and its glass everywhere.)
+          if (isSeasonSkin(id)) Object.assign(draft, { falling: '', seasons: '', glass_style: '', glass: [] });
           redraw();
         } },
         mini(st),
@@ -284,7 +296,7 @@ function themeControls(ctx, saved, redraw, preview) {
   };
   const cards = h(
     'div',
-    { class: 'tm-groups', role: 'radiogroup', 'aria-label': 'Themes' },
+    { class: 'tm-sects', role: 'radiogroup', 'aria-label': 'Themes' },
     SKIN_GROUPS.map(([name, ids]) => {
       const here = ids.includes(d.theme);
       return h(
@@ -336,6 +348,7 @@ function themeControls(ctx, saved, redraw, preview) {
   const pointerLook = (id) => h('span', { class: 'tm-swatch charm', style: { background: `${id === 'none' ? 'url(/cursors/cursor-xp.svg)' : pointerSvgs({ ...t, pointer: id }).arrow} center / 26px no-repeat, ${c.soft}` } });
   const changed = JSON.stringify(themeFile(d)) !== JSON.stringify(themeFile({ theme: saved.theme in SKINS ? saved.theme : 'classic', ...saved })) || !!d.file;
   unsaved = changed;
+  const ownFall = resolveSkin({ theme: d.theme, hemisphere: d.hemisphere }).falling;
   const walls = Object.entries(WALLPAPERS).map(([id, w]) => [id, w.name]);
   // Each part of the theme in its own tab, like the sections of Rockbox's Theme Settings.
   const opt = (key, extra = {}) =>
@@ -346,8 +359,9 @@ function themeControls(ctx, saved, redraw, preview) {
       h(
         'div',
         { class: 'chip-row', role: 'radiogroup', 'aria-label': OPTIONS[key].name },
-        Object.entries(OPTIONS[key].choices).map(([id, label]) =>
-          h('button', { type: 'button', role: 'radio', class: 'chip-btn', 'aria-checked': String(t[key] === id), 'aria-pressed': String(t[key] === id), style: extra.font && FONT_FAMILIES[id] ? { fontFamily: FONT_FAMILIES[id] } : null, onclick: () => { d[key] = id; redraw(); } }, label)
+        // (extra.only keeps it to the choices that mean something here; extra.own is the theme's own, which is said so.)
+        Object.entries(OPTIONS[key].choices).filter(([id]) => !extra.only || extra.only.includes(id)).map(([id, label]) =>
+          h('button', { type: 'button', role: 'radio', class: 'chip-btn', 'aria-checked': String(t[key] === id), 'aria-pressed': String(t[key] === id), style: extra.font && FONT_FAMILIES[id] ? { fontFamily: FONT_FAMILIES[id] } : null, onclick: () => { d[key] = extra.own === id ? '' : id; redraw(); } }, extra.own === id ? `${label} (this theme’s own)` : label)
         )
       )
     );
@@ -417,19 +431,25 @@ function themeControls(ctx, saved, redraw, preview) {
       h('p', { class: 'hint' }, 'A little old-homepage magic. Moving effects stay still for visitors who’ve asked their device for less motion, and never get in the way of tapping or clicking.'),
       opt('name_style'),
       opt('trail'),
-      opt('falling'),
+      isSeasonSkin(d.theme) ? opt('falling', { own: ownFall, only: [ownFall, 'hearts', 'stars', 'confetti', 'bubbles', 'none'] }) : opt('falling'),
+      isSeasonSkin(d.theme)
+        ? h('p', { class: 'hint' }, `${SKINS[d.theme].name} brings what falls with its season. In dark mode it has a night of its own.`)
+        : h('p', { class: 'hint' }, 'With the season or festive day: whatever the time of year brings, if the seasons are on. ', h('button', { type: 'button', class: 'linkish', onclick: () => { ownTab = 'seasons'; redraw(); } }, 'Seasons & festive days')),
       opt('screensaver'),
       h('p', { class: 'hint' }, 'The maze is a slow walk through brick corridors with your photos hung on the walls, each with its title on a little plaque. It’s new every time. Visitors who’ve asked for less motion get the drifting one.')
     ]],
     words_own: ['Words', () => labelControls(d, redraw)],
     floppy: ['Floppy', () => floppyControls(d, t, redraw)],
     seasons: ['Seasons & festive days', () => seasonControls(d, t, redraw, opt)],
-    extras: ['Tab icon & after dark', () => [tabIconControls(d, t, redraw), nightControls(d, t, redraw, preview)]],
+    tabicon: ['Tab icon', () => [tabIconControls(d, t, redraw)]],
+    night: ['After dark', () => [nightControls(d, t, redraw, preview)]],
     apps: ['Apps', () => appControls(d, t, redraw)],
     stickers: [`Stickers${d.stickers.length ? ` (${d.stickers.length})` : ''}`, () => [stickerControls(d, t, c, redraw, preview)]],
     share: ['Share', () => shareControls(ctx, d, redraw)]
   };
   if (!TABS[ownTab]) ownTab = 'colours';
+  const group = TAB_GROUPS.find((g) => g[3].includes(ownTab));
+  lastTabOf[group[0]] = ownTab;
   return [
     cards,
     h(
@@ -439,9 +459,13 @@ function themeControls(ctx, saved, redraw, preview) {
       h('summary', null, `Make ${SKINS[d.theme].name} your own`),
       h(
         'div',
-        { class: 'tm-tabs', role: 'tablist', 'aria-label': 'Parts of the theme' },
-        Object.entries(TABS).map(([id, [label]]) => h('button', { type: 'button', role: 'tab', class: 'tm-tab' + (ownTab === id ? ' on' : ''), 'aria-selected': String(ownTab === id), onclick: () => { ownTab = id; redraw(); } }, label))
+        { class: 'tm-sects', role: 'tablist', 'aria-label': 'Parts of the theme' },
+        TAB_GROUPS.map(([gid, label, , ids]) => h('button', { type: 'button', role: 'tab', class: 'tm-sect' + (group[0] === gid ? ' on' : ''), 'aria-selected': String(group[0] === gid), 'data-tabs': ids.map((id) => TABS[id][0]).join('|'), onclick: () => { ownTab = lastTabOf[gid] || ids[0]; redraw(); } }, label))
       ),
+      h('p', { class: 'hint tm-sect-hint' }, group[2]),
+      group[3].length > 1
+        ? h('div', { class: 'tm-tabs', role: 'tablist', 'aria-label': group[1] }, group[3].map((id) => h('button', { type: 'button', role: 'tab', class: 'tm-tab' + (ownTab === id ? ' on' : ''), 'aria-selected': String(ownTab === id), onclick: () => { ownTab = id; redraw(); } }, TABS[id][0])))
+        : null,
       h('div', { class: 'tm-tabpanel', role: 'tabpanel', 'aria-label': TABS[ownTab][0] }, TABS[ownTab][1]().filter(Boolean)),
       PARTS.some((k) => d[k]) || d.hide.length || d.menu || d.sections_hidden.length || Object.keys(d.apps).length
         ? h('button', { type: 'button', class: 'btn small', onclick: () => { for (const k of PARTS) d[k] = ''; Object.assign(d, { hide: [], menu: null, sections_hidden: [], apps: {} }); redraw(); } }, `Back to ${SKINS[d.theme].name} as it comes`)
@@ -1235,6 +1259,7 @@ function labelControls(d, redraw) {
 // The seasons' glass: an optional extra, place by place.
 function glassControls(d, redraw, opt) {
   d.glass ||= [];
+  const own = isSeasonSkin(d.theme);
   const tick = (id) =>
     h('label', { class: 'check tm-tick' }, h('input', { type: 'checkbox', checked: d.glass.includes(id), onchange: (e) => {
       const set = new Set(d.glass);
@@ -1245,10 +1270,11 @@ function glassControls(d, redraw, opt) {
   return h(
     'div',
     { class: 'design-field wide' },
-    h('span', null, 'Seasonal glass (an extra, if you like)'),
-    h('p', { class: 'hint' }, 'A pane of glass in the season’s mood over the places you tick: frost in winter, petals and a soft bloom in spring, a sun flare in summer, raindrops and a fallen leaf in autumn, sparkles on festive days. Photos and covers get the whole pane; thoughts only the corners, so the words stay clear.'),
+    h('span', null, own ? 'Seasonal glass' : 'Seasonal glass (an extra, if you like)'),
+    own ? h('p', { class: 'hint' }, 'This theme wears its season’s glass everywhere, by itself. Tick places to keep it to those, or choose No glass.') : null,
+    h('p', { class: 'hint' }, 'A pane of glass in the season’s mood over the places you tick: snowflakes and a little snowman in winter, a branch of blossom in spring, a smiling sun and daisies in summer, leaves, an acorn and beads of rain in autumn, sparkles on festive days. Photos and covers get the whole pane; posts, thoughts and windows only the corners, and bars only the light across them, so the words stay clear.'),
     h('div', { class: 'tm-ticks' }, Object.keys(GLASS_PLACES).map(tick)),
-    d.glass.length ? [opt('glass_style'), opt('glass_strength')] : null,
+    d.glass.length || own ? [opt('glass_style'), opt('glass_strength')] : null,
     h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn small', onclick: () => { d.glass = Object.keys(GLASS_PLACES); redraw(); } }, 'Everywhere'), d.glass.length ? h('button', { type: 'button', class: 'btn small', onclick: () => { d.glass = []; redraw(); } }, 'Nowhere') : null)
   );
 }

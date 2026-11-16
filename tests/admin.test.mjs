@@ -1,6 +1,6 @@
 // End-to-end checks of the back office: every save should leave the site showing exactly
 // what was saved, with every photo loading and nothing lost.
-import { api, test, report, assert, eq, launch, close, adminPage, newPost, waitPhotos, editPost, clickSave, toastText, publicData, overview, getFile, putFile, fileExists, mediaOk, split, upload, PHOTOS, BASE, chromium, openTab, rowMenu } from './lib.mjs';
+import { unfold, api, test, report, assert, eq, launch, close, adminPage, newPost, waitPhotos, editPost, clickSave, toastText, publicData, overview, getFile, putFile, fileExists, mediaOk, split, upload, PHOTOS, BASE, chromium, openTab, rowMenu } from './lib.mjs';
 
 const findPost = async (pred) => (await overview()).posts.find(pred);
 async function photosAllLoad(post) {
@@ -42,6 +42,34 @@ await test('a photo post with two photos and captions: every photo loads, cleane
   eq(post.photos.length, 2, 'photo count');
   eq(post.captions, ['first one', 'second: with colon'], 'captions');
   await photosAllLoad(post);
+  await page.close();
+});
+
+await test('filters: tap a photo, swipe or pick one (stained glass too), take it down a little, and it’s saved into the photo', async () => {
+  const page = await adminPage();
+  await newPost(page, 'Photos');
+  await page.locator('#photo-in').setInputFiles([PHOTOS[0], PHOTOS[1]]);
+  await waitPhotos(page);
+  await page.locator('.thumb-pick').first().click();
+  await page.waitForSelector('.filter-stage');
+  eq(await page.locator('.filter-photos span').innerText(), 'Photo 1 of 2', 'which photo');
+  await page.locator('.filter-stage').focus();
+  await page.keyboard.press('ArrowRight');
+  eq(await page.locator('.filter-tag').innerText(), 'Digicam \'05', 'the arrow keys: the next filter');
+  await page.locator('.filter-tile', { hasText: 'Stained glass' }).click();
+  eq(await page.locator('.filter-tag').innerText(), 'Stained glass', 'stained glass');
+  await page.locator('.filter-strength input').fill('60');
+  eq(await page.locator('.filter-strength output').innerText(), '60%', 'strength');
+  await page.locator('.filter-photos button[aria-label="Next photo"]').click();
+  eq(await page.locator('.filter-photos span').innerText(), 'Photo 2 of 2', 'on to the next photo without closing');
+  await page.locator('.filter-panel .btn.go').click();
+  eq(await page.locator('.filter-btn').first().innerText(), '🎨 Stained glass', 'shown under the photo');
+  await page.locator('textarea.textarea').first().fill('Stained glass test');
+  const msg = await clickSave(page);
+  assert(/Published/.test(msg), 'toast: ' + msg);
+  const post = await findPost((p) => p.body.includes('Stained glass test'));
+  await photosAllLoad(post);
+  assert(!page.errors.length, page.errors.join('; '));
   await page.close();
 });
 
@@ -429,6 +457,43 @@ await test('logging an episode just after midnight uses today, not yesterday', a
   const d = await page.locator('.ep-edit input[type="date"]').first().inputValue();
   eq(d, '2026-10-24', 'episode date');
   await page.close();
+});
+
+await test('a playlist: songs each with their own artist and year, in the order you put them', async () => {
+  const page = await adminPage();
+  await newPost(page, 'Music');
+  await page.locator('.field', { has: page.locator('label', { hasText: /title|name/i }) }).locator('input').first().fill('Night Drive Mix');
+  await page.locator('.chip-btn', { hasText: /^Playlist$/ }).click();
+  await unfold(page);
+  for (const [i, [title, artist, year]] of [['Second Song', 'Ada Vale', '1997'], ['First Song', 'The Lanterns', '1984']].entries()) {
+    await page.locator('button', { hasText: '+ Add a song' }).click();
+    await unfold(page);
+    await page.getByLabel(`Song ${i + 1} title`).fill(title);
+    await page.getByLabel(`Song ${i + 1} artist`).fill(artist);
+    await page.getByLabel(`Song ${i + 1} year`).fill(year);
+  }
+  // (An empty row is left out; the second song moves to the top.)
+  await page.locator('button', { hasText: '+ Add a song' }).click();
+  await unfold(page);
+  await page.getByLabel('Move song 2 up').click();
+  await unfold(page);
+  await clickSave(page);
+  const post = (await publicData()).posts.find((p) => p.title === 'Night Drive Mix');
+  eq([post.format, post.tracks], ['playlist', [{ title: 'First Song', artist: 'The Lanterns', year: '1984', note: '' }, { title: 'Second Song', artist: 'Ada Vale', year: '1997', note: '' }]], 'saved, in order');
+  await page.close();
+  // On the site: a disc in the crate, and its songs under the words.
+  const browser = await chromium.launch();
+  const site = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await site.addInitScript(() => sessionStorage.setItem('entered', '1'));
+  await site.goto(`${BASE}/#/music/${post.slug}`);
+  await site.waitForSelector('.mx-list');
+  eq(await site.locator('.mx-track').allInnerTexts().then((l) => l.map((x) => x.replace(/\s+/g, ' ').trim())), ['01 First Song The Lanterns 1984', '02 Second Song Ada Vale 1997'], 'the track list');
+  eq(await site.locator('.mix-cd .mx-count').first().innerText(), '2 songs', 'the disc says how many');
+  await browser.close();
+  // By hand: a line of plain words is a song too, and anything odd is left out.
+  await putFile('music/2026-09-03-by-hand.md', '---\ndate: 2026-09-03 10:00\ntitle: By hand\nformat: mix\ntracks:\n  - "Plain Song — Plain Artist (2001)"\n  - {title: "<b>x</b>", year: nope}\n  - {note: nothing else}\n  - 7\n---\n');
+  const hand = (await publicData()).posts.find((p) => p.title === 'By hand');
+  eq([hand.format, hand.tracks.map((t) => [t.title, t.artist, t.year])], ['playlist', [['Plain Song', 'Plain Artist', '2001'], ['<b>x</b>', '', 'nope'], ['7', '', '']]], 'by hand');
 });
 
 await test('a sign-in that has run out is reported as such, and the writing stays', async () => {

@@ -901,7 +901,12 @@ let presenceOn = false;
 function keepPresence() {
   if (presenceOn) return;
   presenceOn = true;
-  const say = (state) => fetch('/admin/api/presence', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }), keepalive: state === 'bye' }).catch(() => {});
+  const say = (state) =>
+    fetch('/admin/api/presence', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }), keepalive: state === 'bye' })
+      .then((r) => (state === 'bye' ? null : r.json()))
+      // (Back after being away: the site fetched again, so it shows you online once more.)
+      .then((out) => out?.back && !writing() && kit.refresh().catch(() => {}))
+      .catch(() => {});
   say('here');
   setInterval(() => !document.hidden && say('here'), 60000);
   document.addEventListener('visibilitychange', () => !document.hidden && say('here'));
@@ -1910,6 +1915,8 @@ export async function startOwner(s) {
   }
   document.documentElement.classList.add('owner-on');
   keepPresence();
+  // (Your picture as the site's icon: made now if it never was, say for a picture chosen before this came in.)
+  import('/admin/app-icon.js').then((m) => m.ensureAppIcon(site.data?.site?.picture || '')).catch(() => {});
   ownerHooks.holding = () => writing();
   // (A friend's site as their friend, from anywhere on yours: the photos-of-the-day line, say.)
   ownerHooks.visitFriend = visitFriend;

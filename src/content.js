@@ -176,7 +176,7 @@ function plainExcerpt(md, n = 160) {
 const KNOWN = new Set([
   'date', 'title', 'draft', 'font', 'photos', 'area', 'city', 'country', 'country_code', 'lat', 'lon',
   'category', 'rating', 'would_return', 'weather', 'source', 'caption', 'captions', 'stamp',
-  'author', 'director', 'host', 'episode', 'year', 'status', 'recommend', 'quote', 'rewatch', 'suggested_by', 'artist', 'album', 'format', 'pinned', 'friends_only', 'creator', 'season', 'network', 'episodes', 'pages', 'page', 'reading_log', 'floppy', 'floppy_journal', 'ordered', 'bought', 'tickets', 'rides', 'gallery', 'theatre', 'invite', 'boarding', 'cinema', 'cloakroom', 'wristband', 'postcard', 'fortune', 'luggage', 'matchbook', 'coaster', 'roomkey', 'flower', 'postcard_scene', 'pitch', 'trailmap', 'parkpass', 'patch', 'summit', 'signpost', 'leaf', 'marshmallow', 'tides', 'compass', 'bookmark', 'librarycard', 'bookplate', 'note', 'popcorn', 'glasses3d', 'rental', 'tvguide', 'remote', 'headphones', 'gig', 'pick', 'setlist', 'busticket', 'coffeering', 'signature', 'bookclub', 'dogear', 'stubpair', 'programme', 'picknmix', 'drivein', 'tally', 'takeaway', 'nospoil', 'battery', 'jcard', 'walkmap', 'napkin', 'vinyllabel', 'mixtape', 'backstage', 'lighter', 'sky', 'diary', 'moodring', 'doodle', 'cootie', 'forecast', 'lyric', 'handstamp', 'glowstick', 'racebib', 'ceremony', 'confetti', 'balloon', 'matchday', 'funfair', 'rosette', 'namebadge', 'sparkler', 'flyer', 'tourtee', 'earplugs', 'drumstick', 'buttonbadge', 'seatplan', 'lozenge', 'masks', 'stageprog', 'comedyticket', 'mic', 'interval', 'operaglasses', 'curtain', 'laughmeter', 'joke', 'custom_keepsakes', 'memory', 'negatives', 'oldprint', 'calendar', 'vhstape', 'envelope', 'thennow', 'rewind', 'skysunrise', 'skygolden', 'skyrainbow', 'skystorm', 'skysnow', 'skystars', 'skymoon', 'skyaurora', 'skyclouds', 'skyfog', 'skyplane', 'skypink', 'workout', 'gympass', 'personalbest', 'dumbbell', 'steps', 'shaker', 'heartrate', 'setsheet', 'medal', 'waterbottle', 'alarmclock', 'riseshine', 'firstcoffee', 'lunchbreak', 'teatime', 'nightowl', 'sleepmask', 'ledclock', 'discaward', 'trophy', 'chartno1', 'winnercard', 'goldmic', 'autograph', 'fanclub', 'jukebox', 'radiorequest', 'magreview', 'yearonrepeat', 'sevenninch', 'profile', 'grid_photo', 'flashcard', 'highlighter', 'pagetabs', 'timetable', 'examslip', 'pomodoro', 'desklamp', 'librarypass', 'grade', 'casecard', 'mindmap', 'revisionlist', 'pencil', 'calculator', 'gradcap', 'diploma', 'stopwatch', 'lecturenotes', 'doordnd', 'readinglist', 'idbadge', 'timecard', 'meetinginvite', 'outofoffice', 'businesscard', 'inboxzero', 'laptop', 'briefcase', 'deskplate', 'stapler', 'paperclips', 'memo', 'wfh', 'tgif', 'deadline', 'employeemonth', 'menucard', 'winelabel', 'recipecard', 'sugarpacket', 'teabagtag', 'chopsticks', 'bakerybox', 'tablenumber', 'candle', 'housekey', 'planttag', 'knitsquare', 'hotwaterbottle', 'doormat', 'jamjar', 'fridgenote', 'trainticket', 'ferrypass', 'travelpin', 'passportstamp', 'suitcasesticker', 'platform', 'seatres', 'milesign', 'birthdaycard', 'gifttag', 'cakecandle', 'placecard', 'favour', 'bootie', 'partyhat', 'thankyou', 'card', 'ribbon', 'ribbon_style', 'ribbon_colour', 'series', 'start_here', 'with', 'album_with', 'only_me']);
+  'author', 'director', 'host', 'episode', 'year', 'status', 'recommend', 'quote', 'rewatch', 'suggested_by', 'artist', 'album', 'format', 'tracks', 'pinned', 'friends_only', 'creator', 'season', 'network', 'episodes', 'pages', 'page', 'reading_log', 'floppy', 'floppy_journal', 'ordered', 'bought', 'tickets', 'rides', 'gallery', 'theatre', 'invite', 'boarding', 'cinema', 'cloakroom', 'wristband', 'postcard', 'fortune', 'luggage', 'matchbook', 'coaster', 'roomkey', 'flower', 'postcard_scene', 'pitch', 'trailmap', 'parkpass', 'patch', 'summit', 'signpost', 'leaf', 'marshmallow', 'tides', 'compass', 'bookmark', 'librarycard', 'bookplate', 'note', 'popcorn', 'glasses3d', 'rental', 'tvguide', 'remote', 'headphones', 'gig', 'pick', 'setlist', 'busticket', 'coffeering', 'signature', 'bookclub', 'dogear', 'stubpair', 'programme', 'picknmix', 'drivein', 'tally', 'takeaway', 'nospoil', 'battery', 'jcard', 'walkmap', 'napkin', 'vinyllabel', 'mixtape', 'backstage', 'lighter', 'sky', 'diary', 'moodring', 'doodle', 'cootie', 'forecast', 'lyric', 'handstamp', 'glowstick', 'racebib', 'ceremony', 'confetti', 'balloon', 'matchday', 'funfair', 'rosette', 'namebadge', 'sparkler', 'flyer', 'tourtee', 'earplugs', 'drumstick', 'buttonbadge', 'seatplan', 'lozenge', 'masks', 'stageprog', 'comedyticket', 'mic', 'interval', 'operaglasses', 'curtain', 'laughmeter', 'joke', 'custom_keepsakes', 'memory', 'negatives', 'oldprint', 'calendar', 'vhstape', 'envelope', 'thennow', 'rewind', 'skysunrise', 'skygolden', 'skyrainbow', 'skystorm', 'skysnow', 'skystars', 'skymoon', 'skyaurora', 'skyclouds', 'skyfog', 'skyplane', 'skypink', 'workout', 'gympass', 'personalbest', 'dumbbell', 'steps', 'shaker', 'heartrate', 'setsheet', 'medal', 'waterbottle', 'alarmclock', 'riseshine', 'firstcoffee', 'lunchbreak', 'teatime', 'nightowl', 'sleepmask', 'ledclock', 'discaward', 'trophy', 'chartno1', 'winnercard', 'goldmic', 'autograph', 'fanclub', 'jukebox', 'radiorequest', 'magreview', 'yearonrepeat', 'sevenninch', 'profile', 'grid_photo', 'flashcard', 'highlighter', 'pagetabs', 'timetable', 'examslip', 'pomodoro', 'desklamp', 'librarypass', 'grade', 'casecard', 'mindmap', 'revisionlist', 'pencil', 'calculator', 'gradcap', 'diploma', 'stopwatch', 'lecturenotes', 'doordnd', 'readinglist', 'idbadge', 'timecard', 'meetinginvite', 'outofoffice', 'businesscard', 'inboxzero', 'laptop', 'briefcase', 'deskplate', 'stapler', 'paperclips', 'memo', 'wfh', 'tgif', 'deadline', 'employeemonth', 'menucard', 'winelabel', 'recipecard', 'sugarpacket', 'teabagtag', 'chopsticks', 'bakerybox', 'tablenumber', 'candle', 'housekey', 'planttag', 'knitsquare', 'hotwaterbottle', 'doormat', 'jamjar', 'fridgenote', 'trainticket', 'ferrypass', 'travelpin', 'passportstamp', 'suitcasesticker', 'platform', 'seatres', 'milesign', 'birthdaycard', 'gifttag', 'cakecandle', 'placecard', 'favour', 'bootie', 'partyhat', 'thankyou', 'card', 'ribbon', 'ribbon_style', 'ribbon_colour', 'series', 'start_here', 'with', 'album_with', 'only_me']);
 
 export function buildPost(type, key, text, tz) {
   const { data, body } = splitFrontMatter(text);
@@ -255,7 +255,9 @@ export function buildPost(type, key, text, tz) {
     season: data.season != null ? String(data.season) : '',
     network: data.network != null ? String(data.network) : '',
     // Music: an album or a single song (and the album it's from)
-    format: type === 'music' ? (/^(song|single|track)$/i.test(String(data.format ?? '')) ? 'song' : 'album') : '',
+    format: type === 'music' ? (/^(song|single|track)$/i.test(String(data.format ?? '')) ? 'song' : /^(playlist|mix|mixtape)$/i.test(String(data.format ?? '')) ? 'playlist' : 'album') : '',
+    // Music: a playlist's songs, each with its own artist and year
+    tracks: type === 'music' ? parseTracks(data.tracks) : [],
     album: data.album != null ? String(data.album) : '',
     episode: data.episode != null ? String(data.episode) : '',
     // TV: a diary of single episodes, each with its own stars and note
@@ -869,7 +871,7 @@ export const THEME_FESTIVALS = ['lunar_new_year', 'hanami', 'childrens_day', 'dr
 // Words on buttons that can be renamed (these match LABELS in public/js/skins.js).
 export const THEME_LABELS = ['home', 'thoughts', 'journal', 'atlas', 'friends', 'album', 'more', 'passport', 'wishlist', 'planner', 'guestbook', 'books', 'films', 'podcasts', 'music', 'tv', 'arcade', 'stats', 'about', 'explore', 'others', 'search', 'leave', 'nudge', 'open_journal', 'read_review', 'visitor', 'come_in'];
 // Places the seasons' glass can go (these match GLASS_PLACES in public/js/skins.js).
-export const THEME_GLASS = ['photos', 'thoughts', 'journal', 'passport', 'atlas', 'wishlist', 'guestbook', 'books', 'films', 'podcasts', 'music', 'tv'];
+export const THEME_GLASS = ['photos', 'thoughts', 'journal', 'passport', 'atlas', 'wishlist', 'guestbook', 'books', 'films', 'podcasts', 'music', 'tv', 'posts', 'windows', 'bars'];
 export const THEME_OPTIONS = {
   font: ['classic', 'modern', 'system', 'mono', 'rounded', 'bubbly', 'pixel', 'terminal', 'comic', 'handwritten', 'typewriter', 'elegant'],
   title_font: ['classic', 'modern', 'system', 'mono', 'condensed', 'rounded', 'bubbly', 'pixel', 'terminal', 'comic', 'handwritten', 'typewriter', 'elegant', 'arcade', 'tiny'],
@@ -888,10 +890,10 @@ export const THEME_OPTIONS = {
   header: ['banner', 'card', 'minimal', 'hidden'],
   name_style: ['plain', 'rainbow', 'glitter', 'glow', 'wordart', 'outline', 'chrome'],
   trail: ['none', 'sparkles', 'hearts', 'stars', 'bubbles', 'rainbow', 'pixels'],
-  falling: ['season', 'none', 'snow', 'petals', 'hearts', 'stars', 'leaves', 'confetti', 'bubbles', 'sunshine'],
+  falling: ['season', 'none', 'snow', 'petals', 'hearts', 'stars', 'leaves', 'confetti', 'bubbles', 'sunshine', 'seeds', 'fireflies'],
   seasons: ['off', 'auto', 'winter', 'spring', 'summer', 'autumn', 'lunar_new_year', 'hanami', 'childrens_day', 'dragon_boat', 'tanabata', 'mid_autumn', 'nowruz', 'holi', 'ramadan', 'eid_al_fitr', 'eid_al_adha', 'diwali', 'yalda', 'dia_de_reyes', 'carnival', 'dia_de_muertos', 'st_patricks', 'easter', 'midsummer', 'bonfire_night', 'halloween', 'hanukkah', 'christmas', 'my_1', 'my_2', 'my_3', 'my_4', 'my_5', 'my_6', 'my_7', 'my_8', 'my_9', 'my_10', 'my_11', 'my_12'],
   hemisphere: ['north', 'south'],
-  glass_style: ['season', 'winter', 'spring', 'summer', 'autumn', 'festive', 'gloss'],
+  glass_style: ['season', 'winter', 'spring', 'summer', 'autumn', 'festive', 'gloss', 'off'],
   glass_strength: ['medium', 'soft', 'strong'],
   card_style: ['classic', 'polaroid', 'scrapbook', 'notebook', 'postcard', 'sticky', 'ticket', 'torn', 'comic', 'neon', 'letter', 'film', 'pixel', 'chrome'],
   card_festive: ['on', 'off'],
@@ -900,7 +902,7 @@ export const THEME_OPTIONS = {
   page_strength: ['medium', 'soft', 'strong'],
   wall_time: ['day', 'still'],
   machine: ['none', 'beige', 'breadbin', 'bluedesk', 'glass', 'superbar', 'tiles', 'terminal', 'teletext', 'hifi', 'browser'],
-  screensaver: ['drift', 'maze', 'turns'],
+  screensaver: ['drift', 'maze', 'season', 'turns'],
   handset: ['none', 'flip', 'handheld']
 };
 export const THEME_HIDEABLE = ['lastpost', 'status', 'playing', 'countdown', 'nudge', 'clock', 'traystatus', 'fortune', 'photoday'];
@@ -1184,6 +1186,24 @@ function parseReadingLog(list) {
     const date = /^\d{4}-\d{2}-\d{2}/.exec(str(e.date, 30));
     const item = { date: date ? date[0] : '', from, to, chapter: str(e.chapter, 140), note: str(e.note, 2000) };
     if (item.from || item.to || item.chapter || item.note) out.push(item);
+  }
+  return out;
+}
+
+// A playlist's songs: a list under `tracks:`, each with title, artist and year (and a note, if
+// you like). A line of plain words works too: "Title — Artist (1999)".
+function parseTracks(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const str = (v, n) => (v == null ? '' : String(v).trim().slice(0, n));
+  for (const e of list.slice(0, 200)) {
+    let item = null;
+    if (e && typeof e === 'object') item = { title: str(e.title ?? e.song, 140), artist: str(e.artist ?? e.by, 100), year: str(e.year, 10), note: str(e.note, 300) };
+    else if (typeof e === 'string' || typeof e === 'number') {
+      const m = /^(.*?)(?:\s+[—–]\s+|\s+-\s+)(.*?)(?:\s*\((\d{3,4})\))?$/.exec(String(e).trim());
+      item = m ? { title: str(m[1], 140), artist: str(m[2], 100), year: m[3] || '', note: '' } : { title: str(e, 140), artist: '', year: '', note: '' };
+    }
+    if (item && (item.title || item.artist)) out.push(item);
   }
   return out;
 }

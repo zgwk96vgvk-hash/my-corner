@@ -36,6 +36,7 @@ package-lock.json
 package.json
 public/admin/admin.css
 public/admin/admin.js
+public/admin/app-icon.js
 public/admin/countries.js
 public/admin/examples.json
 public/admin/filters.js
