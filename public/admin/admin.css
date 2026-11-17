@@ -55,7 +55,7 @@ fieldset.group legend { padding: 0 4px; color: #0d3a9a; font-weight: bold; }
 .type-tabs button[aria-pressed="true"] { border: 2px solid #316ac5; background: #dfeafc; font-weight: bold; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-btn { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid #a5a28f; border-radius: 17px; background: #fff; font-size: 12px; cursor: pointer; }
-.chip-btn[aria-pressed="true"] { border: 2px solid #316ac5; background: #dfeafc; font-weight: bold; }
+.chip-btn:is([aria-pressed="true"], [aria-checked="true"]) { border: 2px solid #316ac5; background: #dfeafc; font-weight: bold; }
 .star-pick { display: flex; gap: 2px; }
 .star-pick button { width: 40px; height: 40px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .star-pick svg { width: 28px; height: 28px; }
@@ -255,7 +255,6 @@ fieldset.group legend { padding: 0 4px; color: #0d3a9a; font-weight: bold; }
 .keep-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; background: none; color: #444; font-size: 13px; cursor: pointer; margin-bottom: -1px; }
 .keep-tab.on { border-color: #c9c5b2; background: #fff; color: #1d4fb8; font-weight: bold; }
 .keep-tab-n { padding: 0 6px; border-radius: 9px; background: #2f6fd6; color: #fff; font-size: 10px; font-weight: normal; }
-.keep-group { display: block; margin: 10px 0 6px; font-size: 11px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; color: #7a6a58; }
 .keep-ticks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
 .keep-tick { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid #c9c5b2; border-radius: 4px; background: #fff; cursor: pointer; }
 .keep-tick.on { border-color: #2f6fd6; background: #eef4fd; }
@@ -486,8 +485,6 @@ fieldset.group legend { padding: 0 4px; color: #0d3a9a; font-weight: bold; }
 .tm-app .chip-btn { min-height: 30px; padding: 0 10px; font-size: 12px; }
 .tm-app-extra { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #555; }
 .tm-app-all { gap: 6px; }
-.tm-group { grid-column: 1 / -1; margin-top: 4px; font-size: 12px; font-weight: bold; color: #0d3a9a; text-transform: uppercase; letter-spacing: .5px; }
-.tm-groups { display: flex; flex-direction: column; gap: 8px; }
 .tm-gbox { border: 1px solid #c9c4ae; border-radius: 6px; background: #fbfaf5; }
 .tm-gbox > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 10px; cursor: pointer; list-style: none; }
 .tm-gbox > summary::-webkit-details-marker { display: none; }
@@ -698,7 +695,7 @@ fieldset.group legend { padding: 0 4px; color: #0d3a9a; font-weight: bold; }
 .series-chosen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .series-chosen:empty { display: none; }
 .emo-btn.mood-none { width: auto; padding: 0 8px; font-size: 12px; }
-.emo-btn[aria-pressed="true"] { outline: 2px solid #3a6fd8; outline-offset: -2px; border-radius: 4px; background: #e8eefc; }
+.emo-btn:is([aria-pressed="true"], [aria-checked="true"]) { outline: 2px solid #3a6fd8; outline-offset: -2px; border-radius: 4px; background: #e8eefc; }
 .series-chosen .chip { padding: 4px 10px; border-radius: 12px; background: #eef3fb; font-size: 12px; }
 /* Friends on a post (who it's with, a shared album): chips to tap on and off. */
 .friend-chips { display: flex; flex-wrap: wrap; gap: 6px; }
